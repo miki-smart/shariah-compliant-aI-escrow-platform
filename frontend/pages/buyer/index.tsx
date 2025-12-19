@@ -2,27 +2,82 @@
  * Buyer Dashboard - Overview of orders and products
  * Updated to match emerald/teal auth design
  */
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, StatCard } from '@/components/ui/Card';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order } from '@/types';
+import { useAuth } from '@/lib/auth-context';
+import { OrderListResponse, OrderStatus } from '@/types';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { ShoppingBag, FileText, TrendingUp, Clock, ArrowRight, Package } from 'lucide-react';
 
 export default function BuyerDashboard() {
-  const { data: orders, isLoading } = useQuery<Order[]>(
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
+  const { data, isLoading: ordersLoading } = useQuery<OrderListResponse>(
     'buyer-orders',
-    () => apiClient.getOrders({ limit: 5 })
+    () => apiClient.getOrders({ limit: 100 }),  // Fetch more for accurate stats
+    { enabled: !!user && !authLoading }
   );
 
-  const activeOrders = orders?.filter(
-    (o) => !o.status.includes('REJECTED') && o.status !== 'ESCROW_RELEASED' && o.status !== 'CANCELLED'
-  ) || [];
-  const completedOrders = orders?.filter((o) => o.status === 'ESCROW_RELEASED') || [];
-  const pendingOrders = orders?.filter((o) => o.status === 'BANK_PENDING') || [];
+  // Handle authentication and authorization
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    
+    const userRole = user.role || (user as any).roles?.[0];
+    if (userRole && userRole !== 'buyer') {
+      const dashboardRoutes: Record<string, string> = {
+        seller: '/seller',
+        bank: '/bank',
+        delivery_provider: '/delivery',
+        admin: '/admin',
+      };
+      router.push(dashboardRoutes[userRole] || '/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading state while checking auth
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  const userRole = user.role || (user as any).roles?.[0];
+  if (userRole !== 'buyer') {
+    return null;
+  }
+
+  const isLoading = ordersLoading;
+  const orders = data?.orders || [];
+  
+  // Active orders: not cancelled, not completed, not settled
+  const activeOrders = orders.filter(
+    (o) => o.status !== OrderStatus.CANCELLED && 
+           o.status !== OrderStatus.COMPLETED && 
+           o.status !== OrderStatus.SETTLED &&
+           o.status !== OrderStatus.REFUNDED
+  );
+  
+  // Completed orders: settled or completed
+  const completedOrders = orders.filter(
+    (o) => o.status === OrderStatus.SETTLED || o.status === OrderStatus.COMPLETED
+  );
+  
+  // Pending approval: waiting for bank
+  const pendingOrders = orders.filter((o) => o.status === OrderStatus.PENDING_BANK_APPROVAL);
 
   return (
     <DashboardLayout role="BUYER">
@@ -127,7 +182,7 @@ export default function BuyerDashboard() {
             </div>
           ) : orders && orders.length > 0 ? (
             <div className="space-y-4">
-              {orders.map((order) => (
+              {orders.slice(0, 5).map((order) => (
                 <OrderCard key={order.id} order={order} />
               ))}
             </div>

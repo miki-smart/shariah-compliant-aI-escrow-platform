@@ -5,8 +5,18 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
   Order,
   OrderCreate,
+  OrderListResponse,
+  BankApprovalRequest,
+  DeliveryConfirmationRequest,
+  SellerProcessRequest,
+  CancelOrderRequest,
+  OrderStatusHistory,
   Product,
   ProductCreate,
+  ProductUpdate,
+  ProductListResponse,
+  ProductFilters,
+  ShariahValidationResult,
   Escrow,
   ShariahResult,
   ShariahValidationRequest,
@@ -20,6 +30,7 @@ import type {
   RegistrationData,
   RegistrationResponse,
   User,
+  ShariahCategory,
 } from '@/types';
 
 class ApiClient {
@@ -66,8 +77,38 @@ class ApiClient {
   }
 
   // ============ PRODUCTS ============
-  async getProducts(params?: { skip?: number; limit?: number; category?: string }): Promise<Product[]> {
+  async getProducts(
+    params?: ProductFilters & { page?: number; page_size?: number }
+  ): Promise<ProductListResponse> {
     const response = await this.client.get('/products', { params });
+    return response.data;
+  }
+
+  async getAvailableProducts(
+    params?: { 
+      page?: number; 
+      page_size?: number; 
+      category?: string; 
+      search?: string;
+      min_price?: number;
+      max_price?: number;
+    }
+  ): Promise<ProductListResponse> {
+    const response = await this.client.get('/products/available', { params });
+    return response.data;
+  }
+
+  async getMyProducts(
+    params?: { page?: number; page_size?: number }
+  ): Promise<ProductListResponse> {
+    const response = await this.client.get('/products/my-products', { params });
+    return response.data;
+  }
+
+  async getProductsPendingReview(
+    params?: { page?: number; page_size?: number }
+  ): Promise<ProductListResponse> {
+    const response = await this.client.get('/products/pending-review', { params });
     return response.data;
   }
 
@@ -81,9 +122,72 @@ class ApiClient {
     return response.data;
   }
 
+  async updateProduct(productId: string, data: ProductUpdate): Promise<Product> {
+    const response = await this.client.put(`/products/${productId}`, data);
+    return response.data;
+  }
+
+  async deleteProduct(productId: string): Promise<{ message: string; success: boolean; product_id: string }> {
+    const response = await this.client.delete(`/products/${productId}`);
+    return response.data;
+  }
+
+  async submitShariahReview(
+    productId: string, 
+    shariahCategory: ShariahCategory, 
+    notes?: string
+  ): Promise<Product> {
+    const response = await this.client.post(`/products/${productId}/shariah-review`, {
+      product_id: productId,
+      shariah_category: shariahCategory,
+      notes,
+    });
+    return response.data;
+  }
+
+  async revalidateProduct(productId: string): Promise<ShariahValidationResult> {
+    const response = await this.client.post(`/products/${productId}/revalidate`);
+    return response.data;
+  }
+
+  async updateProductStock(productId: string, quantity: number): Promise<Product> {
+    const response = await this.client.patch(`/products/${productId}/stock`, null, {
+      params: { quantity },
+    });
+    return response.data;
+  }
+
+  async toggleProductActive(productId: string): Promise<Product> {
+    const response = await this.client.patch(`/products/${productId}/toggle-active`);
+    return response.data;
+  }
+
   // ============ ORDERS ============
-  async getOrders(params?: { skip?: number; limit?: number }): Promise<Order[]> {
+  async getOrders(params?: { 
+    status?: string; 
+    financing_requested?: boolean;
+    skip?: number; 
+    limit?: number;
+  }): Promise<OrderListResponse> {
     const response = await this.client.get('/orders', { params });
+    return response.data;
+  }
+
+  async getMyOrders(params?: {
+    role_filter?: 'buyer' | 'seller';
+    status?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<OrderListResponse> {
+    const response = await this.client.get('/orders/my-orders', { params });
+    return response.data;
+  }
+
+  async getPendingApprovalOrders(params?: {
+    skip?: number;
+    limit?: number;
+  }): Promise<OrderListResponse> {
+    const response = await this.client.get('/orders/pending-approval', { params });
     return response.data;
   }
 
@@ -92,27 +196,38 @@ class ApiClient {
     return response.data;
   }
 
+  async getOrderHistory(orderId: string): Promise<OrderStatusHistory[]> {
+    const response = await this.client.get(`/orders/${orderId}/history`);
+    return response.data;
+  }
+
   async createOrder(data: OrderCreate): Promise<Order> {
     const response = await this.client.post('/orders', data);
     return response.data;
   }
 
-  async bankApproveOrder(orderId: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/bank-approve`);
+  async bankApproveOrder(orderId: string, data?: BankApprovalRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/bank-approve`, data || { approved: true });
     return response.data;
   }
 
-  async bankRejectOrder(orderId: string, reason?: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/bank-reject`, null, {
-      params: { reason },
-    });
+  async bankRejectOrder(orderId: string, data: BankApprovalRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/bank-reject`, data);
     return response.data;
   }
 
-  async confirmDelivery(orderId: string, confirmed: boolean, notes?: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/confirm-delivery`, null, {
-      params: { confirmed, notes },
-    });
+  async sellerProcessOrder(orderId: string, data: SellerProcessRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/seller-process`, data);
+    return response.data;
+  }
+
+  async confirmDelivery(orderId: string, data: DeliveryConfirmationRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/confirm-delivery`, data);
+    return response.data;
+  }
+
+  async cancelOrder(orderId: string, data: CancelOrderRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/cancel`, data);
     return response.data;
   }
 

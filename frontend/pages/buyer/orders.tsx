@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order } from '@/types';
+import { Order, OrderListResponse } from '@/types';
 import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -14,19 +14,21 @@ import { OrderStatus } from '@/types';
 export default function BuyerOrders() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>();
 
-  const { data: orders, isLoading } = useQuery<Order[]>(
+  const { data, isLoading } = useQuery<OrderListResponse>(
     'buyer-orders',
     () => apiClient.getOrders()
   );
 
+  const orders = data?.orders || [];
+
   const filteredOrders = statusFilter
-    ? orders?.filter((o) => o.status === statusFilter)
+    ? orders.filter((o) => o.status === statusFilter)
     : orders;
 
   const statusCounts = {
-    active: orders?.filter((o) => !o.status.includes('REJECTED') && o.status !== 'ESCROW_RELEASED' && o.status !== 'CANCELLED').length || 0,
-    completed: orders?.filter((o) => o.status === 'ESCROW_RELEASED').length || 0,
-    rejected: orders?.filter((o) => o.status.includes('REJECTED')).length || 0,
+    active: orders.filter((o) => !o.status.includes('REJECTED') && o.status !== 'ESCROW_RELEASED' && o.status !== 'CANCELLED').length || 0,
+    completed: orders.filter((o) => o.status === 'ESCROW_RELEASED').length || 0,
+    rejected: orders.filter((o) => o.status.includes('REJECTED')).length || 0,
   };
 
   return (
@@ -46,7 +48,7 @@ export default function BuyerOrders() {
               size="sm"
               onClick={() => setStatusFilter(undefined)}
             >
-              All ({orders?.length || 0})
+              All ({orders.length})
             </Button>
             <Button
               variant={statusFilter === OrderStatus.ESCROW_LOCKED ? 'primary' : 'outline'}

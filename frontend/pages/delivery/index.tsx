@@ -2,33 +2,78 @@
  * Delivery Dashboard - View assigned deliveries and update status
  * Updated to match emerald/teal auth design
  */
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, StatCard } from '@/components/ui/Card';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order } from '@/types';
+import { useAuth } from '@/lib/auth-context';
+import { OrderListResponse } from '@/types';
 import { OrderStatus } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Truck, Package, MapPin, Clock, CheckCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DeliveryDashboard() {
-  const { data: orders, isLoading } = useQuery<Order[]>(
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
+  const { data, isLoading: ordersLoading } = useQuery<OrderListResponse>(
     'delivery-orders',
-    () => apiClient.getOrders()
+    () => apiClient.getOrders(),
+    { enabled: !!user && !authLoading }
   );
 
+  // Handle authentication and authorization
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    
+    const userRole = user.role || (user as any).roles?.[0];
+    if (userRole && userRole !== 'delivery_provider') {
+      const dashboardRoutes: Record<string, string> = {
+        buyer: '/buyer',
+        seller: '/seller',
+        bank: '/bank',
+        admin: '/admin',
+      };
+      router.push(dashboardRoutes[userRole] || '/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading state while checking auth
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  const userRole = user.role || (user as any).roles?.[0];
+  if (userRole !== 'delivery_provider') {
+    return null;
+  }
+
+  const isLoading = ordersLoading;
+  const orders = data?.orders || [];
+
   // Filter orders that are in delivery stages
-  const assignedDeliveries = orders?.filter(
+  const assignedDeliveries = orders.filter(
     (o) =>
       o.status === OrderStatus.DELIVERY_PENDING ||
       o.status === OrderStatus.DELIVERY_IN_TRANSIT ||
       o.status === OrderStatus.PREPARING
-  ) || [];
+  );
 
   const inTransit = assignedDeliveries.filter((o) => o.status === OrderStatus.DELIVERY_IN_TRANSIT);
   const pending = assignedDeliveries.filter((o) => o.status === OrderStatus.DELIVERY_PENDING);
-  const completed = orders?.filter((o) => o.status === OrderStatus.ESCROW_RELEASED) || [];
+  const completed = orders.filter((o) => o.status === OrderStatus.ESCROW_RELEASED);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -158,7 +203,7 @@ export default function DeliveryDashboard() {
                     <div>
                       <p className="font-medium text-gray-900">Order #{order.id.slice(0, 8)}</p>
                       <p className="text-sm text-gray-500">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(order.total_amount)}
+                        ETB {new Intl.NumberFormat('en-US').format(order.total_amount)}
                       </p>
                     </div>
                   </div>
