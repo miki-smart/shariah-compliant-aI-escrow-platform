@@ -43,7 +43,7 @@ export default function BuyerOrderDetails() {
 
   const { data: shariahResult } = useQuery(
     ['shariah-result', id],
-    () => apiClient.getShariahStatus(id as string),
+    () => apiClient.getShariahResult(id as string),
     { enabled: !!id }
   );
 
@@ -212,5 +212,6 @@ export default function BuyerOrderDetails() {
     </DashboardLayout>
   );
 }
+
 
 

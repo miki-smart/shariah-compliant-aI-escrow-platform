@@ -12,17 +12,17 @@ import {
 } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { 
-  ShieldCheckIcon, 
-  ExclamationTriangleIcon,
-  ArrowPathIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  FunnelIcon,
-  DocumentTextIcon,
-  ClockIcon,
-  CheckCircleIcon,
-  XCircleIcon
-} from '@heroicons/react/24/outline';
+  Shield, 
+  AlertTriangle,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  FileText,
+  Clock,
+  CheckCircle2,
+  XCircle
+} from 'lucide-react';
 
 export default function BankAuditPage() {
   const [page, setPage] = useState(1);
@@ -98,7 +98,7 @@ export default function BankAuditPage() {
             onClick={() => refetch()}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <ArrowPathIcon className="w-5 h-5 text-gray-600" />
+            <RefreshCw className="w-5 h-5 text-gray-600" />
             Refresh
           </button>
         </div>
@@ -109,7 +109,7 @@ export default function BankAuditPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 rounded-lg">
-                  <DocumentTextIcon className="w-5 h-5 text-blue-600" />
+                  <FileText className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Total Events (7d)</p>
@@ -121,7 +121,7 @@ export default function BankAuditPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Success Rate</p>
@@ -133,7 +133,7 @@ export default function BankAuditPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-100 rounded-lg">
-                  <ExclamationTriangleIcon className="w-5 h-5 text-amber-600" />
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Recent Errors</p>
@@ -145,7 +145,7 @@ export default function BankAuditPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-100 rounded-lg">
-                  <ShieldCheckIcon className="w-5 h-5 text-purple-600" />
+                  <Shield className="w-5 h-5 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Entity Types</p>
@@ -163,7 +163,7 @@ export default function BankAuditPage() {
             className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <FunnelIcon className="w-5 h-5 text-gray-600" />
+              <Filter className="w-5 h-5 text-gray-600" />
               <span className="font-medium text-gray-900">Filters</span>
               {Object.values(filters).some(v => v !== '') && (
                 <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
@@ -172,9 +172,9 @@ export default function BankAuditPage() {
               )}
             </div>
             {showFilters ? (
-              <ChevronUpIcon className="w-5 h-5 text-gray-400" />
+              <ChevronUp className="w-5 h-5 text-gray-400" />
             ) : (
-              <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+              <ChevronDown className="w-5 h-5 text-gray-400" />
             )}
           </button>
 
@@ -256,7 +256,7 @@ export default function BankAuditPage() {
 
           {logsLoading ? (
             <div className="flex items-center justify-center py-12">
-              <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+              <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
             </div>
           ) : logsData?.logs.length === 0 ? (
             <div className="py-12 text-center text-gray-500">
@@ -287,18 +287,18 @@ export default function BankAuditPage() {
 
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1 text-sm text-gray-500">
-                          <ClockIcon className="w-4 h-4" />
+                          <Clock className="w-4 h-4" />
                           {formatDate(log.created_at)}
                         </div>
                         {log.success ? (
-                          <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                          <CheckCircle2 className="w-5 h-5 text-green-500" />
                         ) : (
-                          <XCircleIcon className="w-5 h-5 text-red-500" />
+                          <XCircle className="w-5 h-5 text-red-500" />
                         )}
                         {expandedLogId === log.id ? (
-                          <ChevronUpIcon className="w-5 h-5 text-gray-400" />
+                          <ChevronUp className="w-5 h-5 text-gray-400" />
                         ) : (
-                          <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                          <ChevronDown className="w-5 h-5 text-gray-400" />
                         )}
                       </div>
                     </div>

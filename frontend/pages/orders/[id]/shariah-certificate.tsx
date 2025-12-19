@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { apiClient } from '@/lib/api-client';
@@ -57,7 +57,7 @@ export default function ShariahCertificatePage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Shariah Certificate" role="buyer">
+      <DashboardLayout role="BUYER">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
         </div>
@@ -67,7 +67,7 @@ export default function ShariahCertificatePage() {
 
   if (error || !certificate) {
     return (
-      <DashboardLayout title="Shariah Certificate" role="buyer">
+      <DashboardLayout role="BUYER">
         <div className="text-center py-12">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Certificate Not Available</h2>
@@ -84,7 +84,7 @@ export default function ShariahCertificatePage() {
   }
 
   return (
-    <DashboardLayout title="Shariah Certificate" role="buyer">
+    <DashboardLayout role="BUYER">
       <Head>
         <title>Shariah Compliance Certificate | Shariah Escrow</title>
       </Head>

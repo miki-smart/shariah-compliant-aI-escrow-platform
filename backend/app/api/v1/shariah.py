@@ -475,3 +475,89 @@ async def get_shariah_rules(
         rules=rules,
         total=len(rules),
     )
+
+
+@router.get("/results")
+async def get_all_shariah_results(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[ShariahComplianceStatus] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    Get all Shariah validation results. Bank/Admin only.
+    """
+    query = select(ShariahResult)
+    
+    if status_filter:
+        query = query.where(ShariahResult.status == status_filter)
+    
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+    
+    # Paginate
+    query = query.order_by(ShariahResult.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    results = result.scalars().all()
+    
+    return {
+        "results": [result_to_response(r) for r in results],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.get("/stats")
+async def get_shariah_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    Get Shariah compliance statistics. Bank/Admin only.
+    """
+    # Count by status
+    status_counts = {}
+    for s in ShariahComplianceStatus:
+        count_query = select(func.count()).select_from(ShariahResult).where(
+            ShariahResult.status == s
+        )
+        result = await db.execute(count_query)
+        count = result.scalar() or 0
+        if count > 0:
+            status_counts[s.value] = count
+    
+    # Total count
+    total_query = select(func.count()).select_from(ShariahResult)
+    total_result = await db.execute(total_query)
+    total = total_result.scalar() or 0
+    
+    # Compliant count
+    compliant_count = status_counts.get(ShariahComplianceStatus.COMPLIANT.value, 0)
+    
+    # Non-compliant count
+    non_compliant_count = status_counts.get(ShariahComplianceStatus.NON_COMPLIANT.value, 0)
+    
+    # Requires review count
+    review_count = status_counts.get(ShariahComplianceStatus.REQUIRES_REVIEW.value, 0)
+    
+    # Compliance rate
+    compliance_rate = (compliant_count / total * 100) if total > 0 else 100.0
+    
+    # Average compliance score
+    avg_score_query = select(func.avg(ShariahResult.compliance_score))
+    avg_result = await db.execute(avg_score_query)
+    avg_score = avg_result.scalar() or 0
+    
+    return {
+        "total_validations": total,
+        "compliant": compliant_count,
+        "non_compliant": non_compliant_count,
+        "requires_review": review_count,
+        "compliance_rate": round(compliance_rate, 2),
+        "average_compliance_score": round(float(avg_score), 2),
+        "by_status": status_counts,
+    }

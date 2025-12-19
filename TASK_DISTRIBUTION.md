@@ -238,14 +238,14 @@ Before development starts, both developers must agree on:
   - Return clear error if insufficient balance
 
 **Frontend Tasks:**
-- [ ] Fund Escrow Page/Component (Buyer)
+- [x] Fund Escrow Page/Component (Buyer)
   - Display order details and amount
   - Confirm funding action
   - API integration with funding endpoint
   - Success/error handling
   - Redirect to order details
 
-- [ ] Escrow Balance Display Component
+- [x] Escrow Balance Display Component
   - Show current escrow balance for order
   - Status indicator (funded/unfunded)
   - API integration
@@ -271,13 +271,13 @@ Before development starts, both developers must agree on:
   - Notify buyer (event/notification)
 
 **Frontend Tasks:**
-- [ ] Payment Release Status Component
+- [x] Payment Release Status Component
   - Display payment release status
   - Show release conditions (Shariah, AI, delivery)
   - Status timeline
   - API integration
 
-- [ ] Refund Status Component
+- [x] Refund Status Component
   - Display refund status and reason
   - Refund amount display
   - API integration
@@ -291,7 +291,7 @@ Before development starts, both developers must agree on:
   - Sort by timestamp descending
 
 **Frontend Tasks:**
-- [ ] Transaction History Component
+- [x] Transaction History Component
   - Display transaction list
   - Filter by transaction type
   - Timeline view
@@ -320,13 +320,13 @@ Before development starts, both developers must agree on:
   - Update order status to indicate compliance issue
 
 **Frontend Tasks:**
-- [ ] Shariah Compliance Status Component
+- [x] Shariah Compliance Status Component
   - Display compliance status badge
   - Show validation timestamp
   - Display violation reasons if non-compliant
   - API integration
 
-- [ ] Shariah Compliance Card
+- [x] Shariah Compliance Card
   - Detailed compliance information
   - Rules checked
   - Compliance certificate link (if applicable)
@@ -346,7 +346,7 @@ Before development starts, both developers must agree on:
   - Digital signature/verification (simplified for MVP)
 
 **Frontend Tasks:**
-- [ ] Compliance Certificate View/Download
+- [x] Compliance Certificate View/Download
   - Display certificate content
   - Download button (PDF)
   - API integration
@@ -379,7 +379,7 @@ Before development starts, both developers must agree on:
   - Notify relevant parties
 
 **Frontend Tasks:**
-- [ ] Order Lifecycle Timeline Component
+- [x] Order Lifecycle Timeline Component
   - Visual timeline of order states
   - Current status indicator
   - Transition history
@@ -420,7 +420,7 @@ Before development starts, both developers must agree on:
   - Make logs searchable
 
 **Frontend Tasks:**
-- [ ] Audit Log View (Admin/Dashboard)
+- [x] Audit Log View (Admin/Dashboard)
   - Display audit logs with filters
   - Search functionality
   - Export functionality (optional)
@@ -615,4 +615,5 @@ Define event structure for cross-module communication:
 
 **Last Updated:** [Date]  
 **Next Review:** After Phase 2 completion
+
 

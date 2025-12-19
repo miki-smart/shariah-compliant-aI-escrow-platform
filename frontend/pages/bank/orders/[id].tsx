@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order, OrderStatus } from '@/types';
+import { Order, OrderStatus, ShariahComplianceStatus } from '@/types';
 import { OrderStatusTimeline } from '@/components/ui/OrderStatusTimeline';
 import { EscrowStatusCard } from '@/components/ui/EscrowStatusCard';
 import { AIScoreCard } from '@/components/ui/AIScoreCard';
@@ -121,12 +121,12 @@ export default function BankOrderReview() {
 
         {/* Compliance & Risk Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {shariahResult && <ShariahComplianceCard result={shariahResult} />}
+          {shariahResult && <ShariahComplianceCard result={shariahResult} orderId={id as string} />}
           {aiDecision && <AIScoreCard decision={aiDecision} />}
         </div>
 
         {/* Escrow Status */}
-        {escrow && <EscrowStatusCard escrow={escrow} />}
+        {escrow && <EscrowStatusCard escrow={escrow} orderId={id as string} />}
 
         {/* Approval Actions */}
         {canApprove && (
@@ -136,12 +136,12 @@ export default function BankOrderReview() {
               {/* Validation Checks */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
-                  {shariahResult?.compliant ? (
+                  {shariahResult?.status === ShariahComplianceStatus.COMPLIANT ? (
                     <CheckCircle className="w-4 h-4 text-green-600" />
                   ) : (
                     <XCircle className="w-4 h-4 text-red-600" />
                   )}
-                  <span>Shariah Compliance: {shariahResult?.compliant ? 'Approved' : 'Rejected'}</span>
+                  <span>Shariah Compliance: {shariahResult?.status === ShariahComplianceStatus.COMPLIANT ? 'Approved' : 'Rejected'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   {aiDecision?.decision === 'APPROVED' ? (
@@ -159,7 +159,7 @@ export default function BankOrderReview() {
                   variant="primary"
                   onClick={() => approveMutation.mutate()}
                   isLoading={approveMutation.isLoading}
-                  disabled={!shariahResult?.compliant || aiDecision?.decision !== 'APPROVED'}
+                  disabled={shariahResult?.status !== ShariahComplianceStatus.COMPLIANT || aiDecision?.decision !== 'APPROVED'}
                   className="flex-1"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
@@ -197,5 +197,6 @@ export default function BankOrderReview() {
     </DashboardLayout>
   );
 }
+
 
 

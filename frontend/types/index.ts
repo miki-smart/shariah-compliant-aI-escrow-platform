@@ -509,7 +509,7 @@ export interface RegistrationData {
   // Step 3: Personal/Business Info
   first_name: string;
   last_name: string;
-  phone: string;
+  phone?: string;
   company_name?: string;
   business_license?: string;
   address?: string;
@@ -543,5 +543,6 @@ export interface StatusConfig {
   bgColor: string;
   icon?: string;
 }
+
 
 

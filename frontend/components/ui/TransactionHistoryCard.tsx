@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { 
-  ArrowDownCircleIcon,
-  ArrowUpCircleIcon,
-  ArrowPathIcon,
-  LockClosedIcon,
-  ExclamationTriangleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon
-} from '@heroicons/react/24/outline';
+  ArrowDownCircle,
+  ArrowUpCircle,
+  RefreshCw,
+  Lock,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface EscrowTransaction {
@@ -44,18 +44,18 @@ const getTransactionIcon = (type: string) => {
     case 'deposit':
     case 'fund':
     case 'lock':
-      return ArrowDownCircleIcon;
+      return ArrowDownCircle;
     case 'release':
     case 'release_to_seller':
-      return ArrowUpCircleIcon;
+      return ArrowUpCircle;
     case 'refund':
     case 'refund_to_buyer':
     case 'refund_to_bank':
-      return ArrowPathIcon;
+      return RefreshCw;
     case 'freeze':
-      return LockClosedIcon;
+      return Lock;
     default:
-      return ExclamationTriangleIcon;
+      return AlertTriangle;
   }
 };
 
@@ -122,7 +122,7 @@ export default function TransactionHistoryCard({
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="Refresh transactions"
             >
-              <ArrowPathIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           )}
         </div>
@@ -132,7 +132,7 @@ export default function TransactionHistoryCard({
       <div className="divide-y divide-gray-100">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+            <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
           </div>
         ) : transactions.length === 0 ? (
           <div className="py-12 text-center text-gray-500">
@@ -176,7 +176,7 @@ export default function TransactionHistoryCard({
                           {tx.transaction_type.toLowerCase().includes('release') ||
                            tx.transaction_type.toLowerCase().includes('refund') 
                             ? '-' : '+'}
-                          {formatCurrency(tx.amount, tx.currency)}
+                          {formatCurrency(tx.amount)}
                         </p>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                           tx.status.toLowerCase() === 'completed' 
@@ -189,9 +189,9 @@ export default function TransactionHistoryCard({
                         </span>
                       </div>
                       {isExpanded ? (
-                        <ChevronUpIcon className="w-5 h-5 text-gray-400" />
+                        <ChevronUp className="w-5 h-5 text-gray-400" />
                       ) : (
-                        <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                        <ChevronDown className="w-5 h-5 text-gray-400" />
                       )}
                     </div>
                   </div>

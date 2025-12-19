@@ -765,3 +765,175 @@ async def update_release_condition(
         "all_conditions_met": all_met,
         "can_release": escrow.status == EscrowStatus.LOCKED and all_met,
     }
+
+
+# ============ Role-Based Escrow Endpoints ============
+
+@router.get("/buyer", response_model=List[EscrowResponse])
+async def get_buyer_escrows(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[EscrowStatus] = Query(None, description="Filter by escrow status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get all escrows where current user is the buyer.
+    """
+    from app.models.order import Order
+    
+    query = (
+        select(Escrow)
+        .join(Order, Escrow.order_id == Order.id)
+        .where(Order.buyer_id == current_user.id, Escrow.is_deleted == False)
+    )
+    
+    if status_filter:
+        query = query.where(Escrow.status == status_filter)
+    
+    query = query.order_by(Escrow.created_at.desc()).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    escrows = result.scalars().all()
+    
+    return [escrow_to_response(e) for e in escrows]
+
+
+@router.get("/seller", response_model=List[EscrowResponse])
+async def get_seller_escrows(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[EscrowStatus] = Query(None, description="Filter by escrow status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get all escrows where current user is the seller.
+    """
+    from app.models.order import Order
+    
+    query = (
+        select(Escrow)
+        .join(Order, Escrow.order_id == Order.id)
+        .where(Order.seller_id == current_user.id, Escrow.is_deleted == False)
+    )
+    
+    if status_filter:
+        query = query.where(Escrow.status == status_filter)
+    
+    query = query.order_by(Escrow.created_at.desc()).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    escrows = result.scalars().all()
+    
+    return [escrow_to_response(e) for e in escrows]
+
+
+@router.get("/pending-release", response_model=List[EscrowResponse])
+async def get_escrows_pending_release(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    Get all escrows that are locked and ready for release.
+    Bank/Admin only.
+    """
+    query = (
+        select(Escrow)
+        .where(
+            Escrow.status == EscrowStatus.LOCKED,
+            Escrow.is_deleted == False
+        )
+        .order_by(Escrow.created_at.asc())
+        .offset(skip)
+        .limit(limit)
+    )
+    
+    result = await db.execute(query)
+    escrows = result.scalars().all()
+    
+    # Filter to only those with all conditions met
+    ready_escrows = [e for e in escrows if e.all_release_conditions_met()]
+    
+    return [escrow_to_response(e) for e in ready_escrows]
+
+
+@router.get("/stats")
+async def get_escrow_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    Get escrow statistics.
+    Bank/Admin only.
+    """
+    from sqlalchemy import case
+    
+    # Count by status
+    status_counts = {}
+    for s in EscrowStatus:
+        count_query = select(func.count()).select_from(Escrow).where(
+            Escrow.status == s, Escrow.is_deleted == False
+        )
+        result = await db.execute(count_query)
+        count = result.scalar() or 0
+        if count > 0:
+            status_counts[s.value] = count
+    
+    # Total amounts
+    total_query = select(
+        func.count(Escrow.id).label("total_count"),
+        func.coalesce(func.sum(Escrow.total_amount), 0).label("total_amount"),
+        func.coalesce(func.sum(Escrow.released_amount), 0).label("total_released"),
+        func.coalesce(func.sum(Escrow.refunded_amount), 0).label("total_refunded"),
+    ).where(Escrow.is_deleted == False)
+    
+    result = await db.execute(total_query)
+    totals = result.one()
+    
+    # Locked amount
+    locked_query = select(
+        func.coalesce(func.sum(Escrow.total_amount), 0)
+    ).where(
+        Escrow.status == EscrowStatus.LOCKED,
+        Escrow.is_deleted == False
+    )
+    locked_result = await db.execute(locked_query)
+    locked_amount = locked_result.scalar() or 0
+    
+    return {
+        "total_escrows": totals.total_count,
+        "total_amount": float(totals.total_amount),
+        "total_released": float(totals.total_released),
+        "total_refunded": float(totals.total_refunded),
+        "locked_amount": float(locked_amount),
+        "by_status": status_counts,
+        "currency": "MYR",
+    }
+
+
+@router.get("", response_model=List[EscrowResponse])
+async def list_all_escrows(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[EscrowStatus] = Query(None, description="Filter by escrow status"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    List all escrows with optional filters.
+    Bank/Admin only.
+    """
+    query = select(Escrow).where(Escrow.is_deleted == False)
+    
+    if status_filter:
+        query = query.where(Escrow.status == status_filter)
+    
+    query = query.order_by(Escrow.created_at.desc()).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    escrows = result.scalars().all()
+    
+    return [escrow_to_response(e) for e in escrows]

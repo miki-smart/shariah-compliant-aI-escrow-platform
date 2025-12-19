@@ -309,8 +309,106 @@ class ApiClient {
       window.location.href = '/login';
     }
   }
+
+  // ============ BUYER ESCROW & TRANSACTIONS ============
+  async getBuyerEscrows(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/buyer');
+    return response.data;
+  }
+
+  async getBuyerTransactions(): Promise<any[]> {
+    const response = await this.client.get('/transactions/buyer');
+    return response.data;
+  }
+
+  // ============ BANK ESCROW MANAGEMENT ============
+  async getAllEscrows(params?: { status?: string; skip?: number; limit?: number }): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow', { params });
+    return response.data;
+  }
+
+  async getEscrowsForRelease(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/pending-release');
+    return response.data;
+  }
+
+  async getAllShariahResults(params?: { status?: string; skip?: number; limit?: number }): Promise<ShariahResult[]> {
+    const response = await this.client.get('/shariah/results', { params });
+    return response.data;
+  }
+
+  async getEscrowStats(): Promise<any> {
+    const response = await this.client.get('/escrow/stats');
+    return response.data;
+  }
+
+  async getComplianceStats(): Promise<any> {
+    const response = await this.client.get('/shariah/stats');
+    return response.data;
+  }
+
+  // ============ SELLER PAYMENTS & ESCROW ============
+  async getSellerPayments(): Promise<any[]> {
+    const response = await this.client.get('/payments/seller');
+    return response.data;
+  }
+
+  async getSellerEscrows(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/seller');
+    return response.data;
+  }
+
+  async getSellerTransactions(): Promise<any[]> {
+    const response = await this.client.get('/transactions/seller');
+    return response.data;
+  }
+
+  // ============ AUDIT ============
+  async getAuditSummary(days?: number): Promise<any> {
+    const response = await this.client.get('/audit/summary', { params: { days } });
+    return response.data;
+  }
+
+  async getAuditLogs(params?: { page?: number; page_size?: number; entity_type?: string; action?: string; actor_type?: string }): Promise<any> {
+    const response = await this.client.get('/audit/logs', { params });
+    return response.data;
+  }
+
+  async getAuditEntityTypes(): Promise<string[]> {
+    const response = await this.client.get('/audit/entity-types');
+    return response.data;
+  }
+
+  async getAuditActions(): Promise<string[]> {
+    const response = await this.client.get('/audit/actions');
+    return response.data;
+  }
+
+  // ============ RELEASE GATE ============
+  async checkReleaseConditions(orderId: string): Promise<any> {
+    const response = await this.client.get(`/orders/${orderId}/release-conditions`);
+    return response.data;
+  }
+
+  async executeRelease(orderId: string): Promise<any> {
+    const response = await this.client.post(`/orders/${orderId}/release`);
+    return response.data;
+  }
+
+  // ============ FUND ESCROW ============
+  async fundEscrow(orderId: string, data: { amount: number; bank_reference?: string; notes?: string }): Promise<any> {
+    const response = await this.client.post(`/escrow/${orderId}/fund`, data);
+    return response.data;
+  }
+
+  // ============ SHARIAH CERTIFICATE ============
+  async getShariahCertificate(orderId: string): Promise<any> {
+    const response = await this.client.get(`/shariah/certificate/${orderId}`);
+    return response.data;
+  }
 }
 
 export const apiClient = new ApiClient();
+
 
 

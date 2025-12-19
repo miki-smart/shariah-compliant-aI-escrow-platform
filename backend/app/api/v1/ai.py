@@ -2,13 +2,12 @@
 AI Governance API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
-from app.core.dependencies import (
-    get_database_session,
-    get_authenticated_user
-)
+from app.core.database import get_db
+from app.core.dependencies import get_current_user
+from app.models.user import User
 from app.schemas.ai import AIEvaluationRequest, AIDecisionResponse, AIEvaluationReport
 from app.services.ai_service import AIService
 from app.services.orchestration_service import OrchestrationService
@@ -28,8 +27,8 @@ class EvaluationRequest(BaseModel):
 @router.post("/evaluate", response_model=AIDecisionResponse)
 async def evaluate_ai_risk(
     request: AIEvaluationRequest,
-    db: Session = Depends(get_database_session),
-    user: dict = Depends(get_authenticated_user)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
 ):
     """
     Evaluate order using AI governance
@@ -59,8 +58,8 @@ async def evaluate_ai_risk(
 @router.get("/order/{order_id}", response_model=AIDecisionResponse)
 async def get_ai_decision(
     order_id: UUID,
-    db: Session = Depends(get_database_session),
-    user: dict = Depends(get_authenticated_user)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
 ):
     """
     Get AI decision for an order
@@ -79,8 +78,8 @@ async def get_ai_decision(
 @router.post("/validate-delivery", response_model=dict)
 async def validate_delivery_ai(
     order_id: UUID,
-    db: Session = Depends(get_database_session),
-    user: dict = Depends(get_authenticated_user)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
 ):
     """
     Validate delivery legitimacy using AI
@@ -105,8 +104,8 @@ async def validate_delivery_ai(
 @router.post("/evaluate-model", response_model=dict)
 async def evaluate_ai_model(
     request: EvaluationRequest,
-    db: Session = Depends(get_database_session),
-    user: dict = Depends(get_authenticated_user)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
 ):
     """
     Run AI model evaluation using mock datasets

@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
-  CheckCircleIcon, 
-  XCircleIcon, 
-  ClockIcon, 
-  ExclamationTriangleIcon,
-  LockClosedIcon,
-  ArrowPathIcon,
-  ShieldCheckIcon,
-  TruckIcon,
-  BanknotesIcon,
-  ScaleIcon
-} from '@heroicons/react/24/outline';
-import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
-import Button from './Button';
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  AlertTriangle,
+  Lock,
+  RefreshCw,
+  Shield,
+  Truck,
+  Banknote,
+  Scale,
+  ChevronDown
+} from 'lucide-react';
+import { Button } from './Button';
 
 interface ReleaseCondition {
   name: string;
@@ -44,17 +44,17 @@ interface ReleaseConditionsProps {
 const getConditionIcon = (name: string) => {
   switch (name) {
     case 'shariah_compliant':
-      return ShieldCheckIcon;
+      return Shield;
     case 'ai_approved':
-      return ScaleIcon;
+      return Scale;
     case 'delivery_confirmed':
-      return TruckIcon;
+      return Truck;
     case 'no_disputes':
-      return ExclamationTriangleIcon;
+      return AlertTriangle;
     case 'escrow_funded':
-      return BanknotesIcon;
+      return Banknote;
     default:
-      return CheckCircleIcon;
+      return CheckCircle2;
   }
 };
 
@@ -62,7 +62,7 @@ const getStatusConfig = (status: string) => {
   switch (status) {
     case 'met':
       return {
-        icon: CheckCircleIcon,
+        icon: CheckCircle2,
         color: 'text-green-600',
         bgColor: 'bg-green-50',
         borderColor: 'border-green-200',
@@ -70,7 +70,7 @@ const getStatusConfig = (status: string) => {
       };
     case 'not_met':
       return {
-        icon: XCircleIcon,
+        icon: XCircle,
         color: 'text-red-600',
         bgColor: 'bg-red-50',
         borderColor: 'border-red-200',
@@ -78,7 +78,7 @@ const getStatusConfig = (status: string) => {
       };
     case 'pending':
       return {
-        icon: ClockIcon,
+        icon: Clock,
         color: 'text-amber-600',
         bgColor: 'bg-amber-50',
         borderColor: 'border-amber-200',
@@ -86,7 +86,7 @@ const getStatusConfig = (status: string) => {
       };
     default:
       return {
-        icon: ClockIcon,
+        icon: Clock,
         color: 'text-gray-500',
         bgColor: 'bg-gray-50',
         borderColor: 'border-gray-200',
@@ -125,7 +125,7 @@ export default function ReleaseConditionsCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-lg ${canRelease ? 'bg-green-100' : 'bg-amber-100'}`}>
-              <LockClosedIcon className={`w-5 h-5 ${canRelease ? 'text-green-600' : 'text-amber-600'}`} />
+              <Lock className={`w-5 h-5 ${canRelease ? 'text-green-600' : 'text-amber-600'}`} />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Payment Release Gate</h3>
@@ -143,21 +143,16 @@ export default function ReleaseConditionsCard({
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Refresh conditions"
               >
-                <ArrowPathIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
             )}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <svg
+              <ChevronDown
                 className={`w-5 h-5 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              />
             </button>
           </div>
         </div>
@@ -180,7 +175,7 @@ export default function ReleaseConditionsCard({
         <div className="px-6 py-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+              <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
             </div>
           ) : (
             <div className="space-y-3">
@@ -222,7 +217,7 @@ export default function ReleaseConditionsCard({
           {!canRelease && blockingReasons.length > 0 && (
             <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <h4 className="font-medium text-red-800 flex items-center gap-2">
-                <ExclamationTriangleIcon className="w-5 h-5" />
+                <AlertTriangle className="w-5 h-5" />
                 Release Blocked
               </h4>
               <ul className="mt-2 space-y-1">
@@ -255,12 +250,12 @@ export default function ReleaseConditionsCard({
                 >
                   {isReleasing ? (
                     <>
-                      <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                       Processing...
                     </>
                   ) : (
                     <>
-                      <CheckCircleSolid className="w-4 h-4 mr-2" />
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
                       Release Payment
                     </>
                   )}
@@ -284,7 +279,7 @@ export default function ReleaseConditionsCard({
         
         {canRelease && (
           <div className="mt-3 flex items-center gap-2 text-sm text-green-700">
-            <CheckCircleSolid className="w-4 h-4" />
+            <CheckCircle2 className="w-4 h-4" />
             All conditions met - Ready for release
           </div>
         )}
