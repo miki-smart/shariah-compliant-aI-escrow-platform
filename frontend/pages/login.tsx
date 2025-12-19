@@ -168,7 +168,7 @@ function LoginPage() {
           {/* Sign Up Link */}
           <div className="mt-8 pt-6 border-t border-gray-200 text-center">
             <p className="text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href="/register" className="text-emerald-600 hover:text-emerald-700 font-medium">
                 Create one now
               </Link>
