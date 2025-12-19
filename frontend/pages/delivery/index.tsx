@@ -1,6 +1,6 @@
 /**
  * Delivery Dashboard - View assigned deliveries and update status
- * Updated to match emerald/teal auth design
+ * Updated to use delivery-specific API endpoints
  */
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -9,20 +9,56 @@ import { Card, CardHeader, StatCard } from '@/components/ui/Card';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { OrderListResponse } from '@/types';
-import { OrderStatus } from '@/types';
 import { Button } from '@/components/ui/Button';
-import { Truck, Package, MapPin, Clock, CheckCircle, ArrowRight } from 'lucide-react';
+import { Truck, Package, MapPin, Clock, CheckCircle, ArrowRight, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DeliveryDashboard() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
 
-  const { data, isLoading: ordersLoading } = useQuery<OrderListResponse>(
-    'delivery-orders',
-    () => apiClient.getOrders(),
-    { enabled: !!user && !authLoading }
+  // Fetch delivery stats
+  const { data: stats, isLoading: statsLoading } = useQuery(
+    'delivery-stats',
+    () => apiClient.getDeliveryStats(),
+    { 
+      enabled: !!user && !authLoading,
+      retry: false,
+      onError: () => {} // Silently handle errors
+    }
+  );
+
+  // Fetch assigned deliveries
+  const { data: assignedData, isLoading: assignedLoading } = useQuery(
+    'assigned-deliveries',
+    () => apiClient.getAssignedDeliveries(),
+    { 
+      enabled: !!user && !authLoading,
+      retry: false,
+      onError: () => {}
+    }
+  );
+
+  // Fetch pending pickup deliveries
+  const { data: pendingData } = useQuery(
+    'pending-pickups',
+    () => apiClient.getPendingPickups(),
+    { 
+      enabled: !!user && !authLoading,
+      retry: false,
+      onError: () => {}
+    }
+  );
+
+  // Fetch in-transit deliveries
+  const { data: transitData } = useQuery(
+    'in-transit-deliveries',
+    () => apiClient.getInTransitDeliveries(),
+    { 
+      enabled: !!user && !authLoading,
+      retry: false,
+      onError: () => {}
+    }
   );
 
   // Handle authentication and authorization
@@ -35,7 +71,7 @@ export default function DeliveryDashboard() {
     }
     
     const userRole = user.role || (user as any).roles?.[0];
-    if (userRole && userRole !== 'delivery_provider') {
+    if (userRole && userRole !== 'delivery_provider' && userRole !== 'admin') {
       const dashboardRoutes: Record<string, string> = {
         buyer: '/buyer',
         seller: '/seller',
@@ -56,24 +92,17 @@ export default function DeliveryDashboard() {
   }
 
   const userRole = user.role || (user as any).roles?.[0];
-  if (userRole !== 'delivery_provider') {
+  if (userRole !== 'delivery_provider' && userRole !== 'admin') {
     return null;
   }
 
-  const isLoading = ordersLoading;
-  const orders = data?.orders || [];
-
-  // Filter orders that are in delivery stages
-  const assignedDeliveries = orders.filter(
-    (o) =>
-      o.status === OrderStatus.DELIVERY_PENDING ||
-      o.status === OrderStatus.DELIVERY_IN_TRANSIT ||
-      o.status === OrderStatus.PREPARING
-  );
-
-  const inTransit = assignedDeliveries.filter((o) => o.status === OrderStatus.DELIVERY_IN_TRANSIT);
-  const pending = assignedDeliveries.filter((o) => o.status === OrderStatus.DELIVERY_PENDING);
-  const completed = orders.filter((o) => o.status === OrderStatus.ESCROW_RELEASED);
+  const isLoading = statsLoading || assignedLoading;
+  
+  // Use actual delivery data from API
+  const deliveries = assignedData?.deliveries || assignedData || [];
+  const inTransit = transitData?.deliveries || transitData || [];
+  const pending = pendingData?.deliveries || pendingData || [];
+  const completedToday = stats?.completed_today || 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -109,22 +138,22 @@ export default function DeliveryDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard
             title="Assigned Deliveries"
-            value={assignedDeliveries.length}
+            value={stats?.total_assigned || deliveries.length}
             icon={<Package className="w-6 h-6 text-violet-600" />}
           />
           <StatCard
             title="In Transit"
-            value={inTransit.length}
+            value={stats?.in_transit || inTransit.length}
             icon={<Truck className="w-6 h-6 text-blue-600" />}
           />
           <StatCard
             title="Pending Pickup"
-            value={pending.length}
+            value={stats?.pending_pickup || pending.length}
             icon={<Clock className="w-6 h-6 text-amber-600" />}
           />
           <StatCard
             title="Completed Today"
-            value={completed.length}
+            value={completedToday}
             icon={<CheckCircle className="w-6 h-6 text-emerald-600" />}
           />
         </div>
@@ -192,26 +221,28 @@ export default function DeliveryDashboard() {
                 <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
               ))}
             </div>
-          ) : assignedDeliveries.length > 0 ? (
+          ) : deliveries.length > 0 ? (
             <div className="space-y-4">
-              {assignedDeliveries.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+              {deliveries.slice(0, 5).map((delivery: any) => (
+                <div key={delivery.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-gradient-to-br from-violet-100 to-purple-100 rounded-lg flex items-center justify-center">
                       <Truck className="w-5 h-5 text-violet-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">Order #{order.id.slice(0, 8)}</p>
+                      <p className="font-medium text-gray-900">
+                        {delivery.tracking_number || `Delivery #${delivery.id.slice(0, 8)}`}
+                      </p>
                       <p className="text-sm text-gray-500">
-                        ETB {new Intl.NumberFormat('en-US').format(order.total_amount)}
+                        Order: {delivery.order_number || delivery.order_id?.slice(0, 8)}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                      {order.status.replace(/_/g, ' ')}
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(delivery.status)}`}>
+                      {delivery.status.replace(/_/g, ' ')}
                     </span>
-                    <Link href={`/delivery/assignments/${order.id}`}>
+                    <Link href={`/delivery/assignments/${delivery.id}`}>
                       <Button variant="primary" size="sm">Manage</Button>
                     </Link>
                   </div>
@@ -232,3 +263,4 @@ export default function DeliveryDashboard() {
     </DashboardLayout>
   );
 }
+

@@ -31,6 +31,8 @@ import {
   DollarSign,
   Send,
   Ban,
+  Camera,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
@@ -82,6 +84,20 @@ export default function SellerOrderDetailPage() {
     { enabled: !!id && showHistory }
   );
 
+  // Get delivery info if order has delivery
+  const { data: delivery } = useQuery(
+    ['order-delivery', order?.delivery_id],
+    () => apiClient.getDeliveryById(order!.delivery_id!),
+    { enabled: !!order?.delivery_id }
+  );
+
+  // Get verification status
+  const { data: verificationStatus, refetch: refetchVerification } = useQuery(
+    ['verification-status', order?.delivery_id],
+    () => apiClient.getVerificationStatus(order!.delivery_id!),
+    { enabled: !!order?.delivery_id }
+  );
+
   const processOrderMutation = useMutation(
     (data: SellerProcessRequest) => apiClient.sellerProcessOrder(id as string, data),
     {
@@ -91,6 +107,17 @@ export default function SellerOrderDetailPage() {
         setShowAcceptModal(false);
         setShowRejectModal(false);
         setShowShipModal(false);
+      },
+    }
+  );
+
+  // Seller request pickup confirmation mutation
+  const requestPickupConfirmationMutation = useMutation(
+    () => apiClient.sellerRequestPickupConfirmation(order!.delivery_id!),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['verification-status', order?.delivery_id]);
+        refetchVerification();
       },
     }
   );
@@ -292,6 +319,150 @@ export default function SellerOrderDetailPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Delivery Verification Section - Only show when order has delivery */}
+            {order.delivery_id && verificationStatus && (
+              <div className={`bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border ${verificationStatus?.fraud_detected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-gray-400" />
+                  Delivery Verification
+                </h3>
+                
+                {verificationStatus?.fraud_detected && (
+                  <div className="mb-4 p-4 bg-red-100 border border-red-300 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-800">Fraud Detected!</p>
+                      <p className="text-sm text-red-700">
+                        Photo verification failed after maximum attempts. Order has been cancelled.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pickup Verification Status */}
+                <div className="p-4 border border-gray-200 rounded-xl mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-5 h-5 text-blue-600" />
+                      <span className="font-medium">Pickup Verification</span>
+                    </div>
+                    {verificationStatus?.pickup.photo_verified ? (
+                      <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                        <CheckCircle className="w-4 h-4" /> Photo Verified
+                      </span>
+                    ) : (
+                      <span className="text-amber-600 text-sm flex items-center gap-1">
+                        <Clock className="w-4 h-4" /> Waiting for provider
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Show request confirmation button when photo is verified but seller hasn't requested yet */}
+                  {verificationStatus?.pickup.photo_verified && 
+                   !verificationStatus?.pickup.seller_requested_confirmation && 
+                   !verificationStatus?.fraud_detected && (
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-600 mb-3">
+                        The delivery provider has verified the pickup photo. Please request confirmation from the provider.
+                      </p>
+                      <button
+                        onClick={() => requestPickupConfirmationMutation.mutate()}
+                        disabled={requestPickupConfirmationMutation.isLoading}
+                        className="px-4 py-2 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {requestPickupConfirmationMutation.isLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                        Request Pickup Confirmation
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Show waiting for provider confirmation */}
+                  {verificationStatus?.pickup.seller_requested_confirmation && 
+                   !verificationStatus?.pickup.provider_confirmed && (
+                    <div className="mt-3 p-3 bg-amber-50 rounded-lg">
+                      <p className="text-sm text-amber-700 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Confirmation requested. Waiting for delivery provider to confirm pickup.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Show completed status */}
+                  {verificationStatus?.pickup.provider_confirmed && (
+                    <div className="mt-3 p-3 bg-emerald-50 rounded-lg">
+                      <p className="text-sm text-emerald-700 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Pickup confirmed by provider at{' '}
+                        {new Date(verificationStatus.pickup.provider_confirmed_at!).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Delivery Verification Status */}
+                <div className="p-4 border border-gray-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-5 h-5 text-emerald-600" />
+                      <span className="font-medium">Delivery Verification</span>
+                    </div>
+                    {verificationStatus?.delivery.photo_verified ? (
+                      <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                        <CheckCircle className="w-4 h-4" /> Verified by Buyer
+                      </span>
+                    ) : verificationStatus?.pickup.provider_confirmed ? (
+                      <span className="text-amber-600 text-sm flex items-center gap-1">
+                        <Clock className="w-4 h-4" /> Waiting for buyer
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-sm">Not yet started</span>
+                    )}
+                  </div>
+                  
+                  <p className="text-sm text-gray-600">
+                    {verificationStatus?.pickup.provider_confirmed 
+                      ? 'Order is being delivered. Buyer will verify upon receipt.'
+                      : 'Complete pickup verification first.'}
+                  </p>
+                </div>
+
+                {/* Escrow Release Requirements */}
+                {verificationStatus?.escrow_release_requirements && (
+                  <div className="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Shield className="w-5 h-5 text-emerald-600" />
+                      <span className="font-medium">Escrow Release Status</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {Object.entries(verificationStatus.escrow_release_requirements).map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-1">
+                          {value ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-gray-300" />
+                          )}
+                          <span className={value ? 'text-emerald-700' : 'text-gray-500'}>
+                            {key.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {verificationStatus.can_release_escrow && (
+                      <div className="mt-3 p-2 bg-emerald-100 rounded-lg">
+                        <p className="text-sm text-emerald-700 font-medium">
+                          ✅ All requirements met. Escrow will be released soon.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

@@ -60,11 +60,10 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
+        // Don't auto-logout on 401 - let the auth context handle token refresh
+        // Only log the error for debugging
         if (error.response?.status === 401) {
-          // Handle unauthorized - redirect to login
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+          console.warn('API returned 401:', error.response?.data);
         }
         return Promise.reject(error);
       }
@@ -290,9 +289,226 @@ class ApiClient {
     return response.data;
   }
 
-  // ============ DELIVERY ============
+  // ============ DELIVERY PROVIDER ============
+  async getAssignedDeliveries(params?: { status?: string; page?: number; page_size?: number }): Promise<{
+    deliveries: Delivery[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> {
+    const response = await this.client.get('/delivery/assigned', { params });
+    return response.data;
+  }
+
+  async getPendingPickups(): Promise<Delivery[]> {
+    const response = await this.client.get('/delivery/pending-pickup');
+    return response.data;
+  }
+
+  async getInTransitDeliveries(): Promise<Delivery[]> {
+    const response = await this.client.get('/delivery/in-transit');
+    return response.data;
+  }
+
+  async getDeliveryById(deliveryId: string): Promise<Delivery> {
+    const response = await this.client.get(`/delivery/${deliveryId}`);
+    return response.data;
+  }
+
+  async getDeliveryTracking(deliveryId: string): Promise<Array<{
+    id: string;
+    event_type: string;
+    description: string;
+    location?: Record<string, any>;
+    timestamp: string;
+  }>> {
+    const response = await this.client.get(`/delivery/${deliveryId}/tracking`);
+    return response.data;
+  }
+
+  async updateDeliveryStatusNew(deliveryId: string, data: {
+    status: string;
+    location?: { latitude?: number; longitude?: number; address?: string; city?: string; notes?: string };
+    notes?: string;
+    proof_of_delivery?: Record<string, any>;
+    signature_image?: string;
+    failure_reason?: string;
+  }): Promise<Delivery> {
+    const response = await this.client.post(`/delivery/${deliveryId}/status`, data);
+    return response.data;
+  }
+
+  async addDeliveryLocation(deliveryId: string, location: {
+    latitude?: number;
+    longitude?: number;
+    address?: string;
+    city?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/location`, location);
+    return response.data;
+  }
+
+  async confirmDeliveryByProvider(deliveryId: string, notes?: string): Promise<Delivery> {
+    const response = await this.client.post(`/delivery/${deliveryId}/confirm`, null, {
+      params: { notes },
+    });
+    return response.data;
+  }
+
+  async trackDeliveryPublic(trackingNumber: string): Promise<{
+    tracking_number: string;
+    status: string;
+    estimated_delivery?: string;
+    actual_delivery?: string;
+    events: Array<{
+      event_type: string;
+      description: string;
+      timestamp: string;
+      location?: Record<string, any>;
+    }>;
+  }> {
+    const response = await this.client.get(`/delivery/track/${trackingNumber}`);
+    return response.data;
+  }
+
+  async getDeliveryStats(): Promise<{
+    total: number;
+    pending_pickup: number;
+    active: number;
+    completed: number;
+    [key: string]: number;
+  }> {
+    const response = await this.client.get('/delivery/stats');
+    return response.data;
+  }
+
+  // Photo verification methods
+  
+  // Provider uploads pickup photo (Seller → Provider)
+  async verifyPickupPhoto(deliveryId: string, data: {
+    photo_base64: string;
+    photo_type: 'pickup';
+    notes?: string;
+    location?: {
+      latitude?: number;
+      longitude?: number;
+      address?: string;
+      city?: string;
+    };
+  }): Promise<{
+    success: boolean;
+    is_match: boolean;
+    similarity_score: number;
+    message: string;
+    verification_type: string;
+    fraud_detected: boolean;
+    next_step?: string;
+    details?: Record<string, any>;
+  }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/verify-photo`, data);
+    return response.data;
+  }
+
+  // Buyer uploads delivery photo (Provider → Buyer)
+  async verifyDeliveryPhoto(deliveryId: string, data: {
+    photo_base64: string;
+    photo_type: 'delivery';
+    notes?: string;
+    location?: {
+      latitude?: number;
+      longitude?: number;
+      address?: string;
+      city?: string;
+    };
+  }): Promise<{
+    success: boolean;
+    is_match: boolean;
+    similarity_score: number;
+    message: string;
+    verification_type: string;
+    fraud_detected: boolean;
+    next_step?: string;
+    details?: Record<string, any>;
+  }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/verify-delivery-photo`, data);
+    return response.data;
+  }
+
+  async sellerRequestPickupConfirmation(deliveryId: string, notes?: string): Promise<{
+    success: boolean;
+    message: string;
+    requested_at: string;
+    next_step: string;
+  }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/seller-confirm-pickup`, { notes });
+    return response.data;
+  }
+
+  async providerConfirmPickup(deliveryId: string): Promise<{
+    success: boolean;
+    message: string;
+    confirmed_at: string;
+    next_step: string;
+  }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/provider-confirm-pickup`);
+    return response.data;
+  }
+
+  async getVerificationStatus(deliveryId: string): Promise<{
+    delivery_id: string;
+    photo_verification_status: string;
+    pickup: {
+      photo_uploaded: boolean;
+      photo_verified: boolean;
+      similarity_score: number | null;
+      verified_at: string | null;
+      attempts_used: number;
+      attempts_remaining: number;
+      max_attempts: number;
+      seller_requested_confirmation: boolean;
+      seller_requested_at: string | null;
+      provider_confirmed: boolean;
+      provider_confirmed_at: string | null;
+    };
+    delivery: {
+      photo_uploaded: boolean;
+      photo_verified: boolean;
+      similarity_score: number | null;
+      verified_at: string | null;
+      attempts_used: number;
+      attempts_remaining: number;
+      max_attempts: number;
+      buyer_confirmed: boolean;
+      buyer_confirmed_at: string | null;
+      provider_confirmed: boolean;
+      provider_confirmed_at: string | null;
+    };
+    fraud_detected: boolean;
+    fraud_type: string | null;
+    can_release_escrow: boolean;
+    escrow_release_requirements: Record<string, boolean>;
+  }> {
+    const response = await this.client.get(`/delivery/${deliveryId}/verification-status`);
+    return response.data;
+  }
+
+  async completeDeliveryWithVerification(deliveryId: string): Promise<{
+    success: boolean;
+    message: string;
+    delivery_id: string;
+    status: string;
+    escrow_status: string;
+    can_release_escrow: boolean;
+    verification_summary: Record<string, boolean>;
+  }> {
+    const response = await this.client.post(`/delivery/${deliveryId}/complete-delivery`);
+    return response.data;
+  }
+
+  // Legacy delivery methods (kept for backward compatibility)
   async getDelivery(orderId: string): Promise<Delivery> {
-    const response = await this.client.get(`/delivery/order/${orderId}`);
+    const response = await this.client.get(`/delivery/${orderId}`);
     return response.data;
   }
 
@@ -301,13 +517,13 @@ class ApiClient {
     return response.data;
   }
 
-  async updateDeliveryStatus(orderId: string, data: DeliveryStatusUpdate): Promise<Delivery> {
-    const response = await this.client.put(`/delivery/${orderId}/status`, data);
+  async updateDeliveryStatus(deliveryId: string, data: DeliveryStatusUpdate): Promise<Delivery> {
+    const response = await this.client.post(`/delivery/${deliveryId}/status`, data);
     return response.data;
   }
 
-  async confirmDeliveryDelivery(orderId: string, data: DeliveryConfirmation): Promise<Delivery> {
-    const response = await this.client.post(`/delivery/${orderId}/confirm`, data);
+  async confirmDeliveryDelivery(deliveryId: string, data: DeliveryConfirmation): Promise<Delivery> {
+    const response = await this.client.post(`/delivery/${deliveryId}/confirm`, data);
     return response.data;
   }
 
@@ -424,8 +640,106 @@ class ApiClient {
       window.location.href = '/login';
     }
   }
+
+  // ============ BUYER ESCROW & TRANSACTIONS ============
+  async getBuyerEscrows(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/buyer');
+    return response.data;
+  }
+
+  async getBuyerTransactions(): Promise<any[]> {
+    const response = await this.client.get('/transactions/buyer');
+    return response.data;
+  }
+
+  // ============ BANK ESCROW MANAGEMENT ============
+  async getAllEscrows(params?: { status?: string; skip?: number; limit?: number }): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow', { params });
+    return response.data;
+  }
+
+  async getEscrowsForRelease(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/pending-release');
+    return response.data;
+  }
+
+  async getAllShariahResults(params?: { status?: string; skip?: number; limit?: number }): Promise<ShariahResult[]> {
+    const response = await this.client.get('/shariah/results', { params });
+    return response.data;
+  }
+
+  async getEscrowStats(): Promise<any> {
+    const response = await this.client.get('/escrow/stats');
+    return response.data;
+  }
+
+  async getComplianceStats(): Promise<any> {
+    const response = await this.client.get('/shariah/stats');
+    return response.data;
+  }
+
+  // ============ SELLER PAYMENTS & ESCROW ============
+  async getSellerPayments(): Promise<any[]> {
+    const response = await this.client.get('/payments/seller');
+    return response.data;
+  }
+
+  async getSellerEscrows(): Promise<Escrow[]> {
+    const response = await this.client.get('/escrow/seller');
+    return response.data;
+  }
+
+  async getSellerTransactions(): Promise<any[]> {
+    const response = await this.client.get('/transactions/seller');
+    return response.data;
+  }
+
+  // ============ AUDIT ============
+  async getAuditSummary(days?: number): Promise<any> {
+    const response = await this.client.get('/audit/summary', { params: { days } });
+    return response.data;
+  }
+
+  async getAuditLogs(params?: { page?: number; page_size?: number; entity_type?: string; action?: string; actor_type?: string }): Promise<any> {
+    const response = await this.client.get('/audit/logs', { params });
+    return response.data;
+  }
+
+  async getAuditEntityTypes(): Promise<string[]> {
+    const response = await this.client.get('/audit/entity-types');
+    return response.data;
+  }
+
+  async getAuditActions(): Promise<string[]> {
+    const response = await this.client.get('/audit/actions');
+    return response.data;
+  }
+
+  // ============ RELEASE GATE ============
+  async checkReleaseConditions(orderId: string): Promise<any> {
+    const response = await this.client.get(`/orders/${orderId}/release-conditions`);
+    return response.data;
+  }
+
+  async executeRelease(orderId: string): Promise<any> {
+    const response = await this.client.post(`/orders/${orderId}/release`);
+    return response.data;
+  }
+
+  // ============ FUND ESCROW ============
+  async fundEscrow(orderId: string, data: { amount: number; bank_reference?: string; notes?: string }): Promise<any> {
+    const response = await this.client.post(`/escrow/${orderId}/fund`, data);
+    return response.data;
+  }
+
+  // ============ SHARIAH CERTIFICATE ============
+  async getShariahCertificate(orderId: string): Promise<any> {
+    const response = await this.client.get(`/shariah/certificate/${orderId}`);
+    return response.data;
+  }
 }
 
 export const apiClient = new ApiClient();
+
 
 

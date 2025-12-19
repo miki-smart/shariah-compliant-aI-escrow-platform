@@ -1,8 +1,8 @@
 /**
  * Buyer Order Detail Page
- * View order details and confirm delivery
+ * View order details, confirm delivery, and verify delivery photos
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import Link from 'next/link';
@@ -29,6 +29,8 @@ import {
   MessageSquare,
   RefreshCw,
   AlertTriangle,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
@@ -68,6 +70,19 @@ export default function BuyerOrderDetailPage() {
   const [disputeReason, setDisputeReason] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  
+  // Photo verification state
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [verificationResult, setVerificationResult] = useState<{
+    success: boolean;
+    is_match: boolean;
+    similarity_score: number;
+    message: string;
+    next_step?: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle authentication and authorization
   useEffect(() => {
@@ -90,7 +105,7 @@ export default function BuyerOrderDetailPage() {
     }
   }, [user, authLoading, router]);
 
-  const { data: order, isLoading, error } = useQuery<Order>(
+  const { data: order, isLoading, error, refetch: refetchOrder } = useQuery<Order>(
     ['order', id],
     () => apiClient.getOrder(id as string),
     { enabled: !!id && !!user && !authLoading }
@@ -100,6 +115,41 @@ export default function BuyerOrderDetailPage() {
     ['order-history', id],
     () => apiClient.getOrderHistory(id as string),
     { enabled: !!id && !!user && !authLoading && showHistory }
+  );
+
+  // Get delivery info for this order (to get delivery_id)
+  const { data: deliveries } = useQuery(
+    ['order-deliveries', id],
+    async () => {
+      // First get deliveries and find one matching this order
+      const response = await apiClient.getAssignedDeliveries();
+      return response.deliveries.filter((d: any) => d.order_id === id);
+    },
+    { enabled: !!id && !!order }
+  );
+
+  const deliveryId = order?.delivery_id || deliveries?.[0]?.id;
+
+  // Get verification status
+  const { data: verificationStatus, refetch: refetchVerification } = useQuery(
+    ['verification-status', deliveryId],
+    () => apiClient.getVerificationStatus(deliveryId),
+    { enabled: !!deliveryId }
+  );
+
+  // Photo verification mutation (Buyer verifies delivery)
+  const verifyPhotoMutation = useMutation(
+    (data: { photo_base64: string; photo_type: 'delivery'; notes?: string }) =>
+      apiClient.verifyDeliveryPhoto(deliveryId, data),
+    {
+      onSuccess: (result) => {
+        setVerificationResult(result);
+        queryClient.invalidateQueries(['order', id]);
+        queryClient.invalidateQueries(['verification-status', deliveryId]);
+        refetchVerification();
+        refetchOrder();
+      },
+    }
   );
 
   const confirmDeliveryMutation = useMutation(
@@ -125,6 +175,36 @@ export default function BuyerOrderDetailPage() {
       },
     }
   );
+
+  // Photo handling functions
+  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setPhotoPreview(base64);
+        const base64Data = base64.split(',')[1];
+        setSelectedPhoto(base64Data);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePhotoVerification = () => {
+    if (!selectedPhoto) return;
+    verifyPhotoMutation.mutate({
+      photo_base64: selectedPhoto,
+      photo_type: 'delivery',
+    });
+  };
+
+  const openPhotoModal = () => {
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    setVerificationResult(null);
+    setShowPhotoModal(true);
+  };
 
   const handleConfirmDelivery = () => {
     confirmDeliveryMutation.mutate({
@@ -242,6 +322,7 @@ export default function BuyerOrderDetailPage() {
                   <button
                     onClick={() => setShowConfirmModal(true)}
                     className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+                    disabled={!verificationStatus?.delivery?.photo_verified}
                   >
                     <CheckCircle className="w-5 h-5" />
                     Confirm Delivery
@@ -256,6 +337,161 @@ export default function BuyerOrderDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Photo Verification Card (Buyer takes delivery photo) */}
+            {deliveryId && (order.status === OrderStatus.IN_TRANSIT || order.status === OrderStatus.DELIVERED) && (
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-emerald-600" />
+                  Delivery Photo Verification
+                </h3>
+                
+                {verificationStatus?.fraud_detected && (
+                  <div className="mb-4 p-4 bg-red-100 border border-red-300 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-800">Fraud Detected!</p>
+                      <p className="text-sm text-red-700">
+                        Product photo does not match the listing. Do not accept this delivery.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {/* Pickup Status (from seller) */}
+                  <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-5 h-5 text-blue-600" />
+                        <span className="font-medium">Pickup from Seller</span>
+                      </div>
+                      {verificationStatus?.pickup?.photo_verified ? (
+                        <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                          <CheckCircle className="w-4 h-4" /> Verified
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 text-sm">Pending</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      {verificationStatus?.pickup?.provider_confirmed 
+                        ? '✅ Pickup confirmed by provider'
+                        : verificationStatus?.pickup?.seller_requested_confirmation
+                        ? '⏳ Waiting for provider confirmation'
+                        : verificationStatus?.pickup?.photo_verified
+                        ? '⏳ Waiting for seller to request confirmation'
+                        : '⏳ Delivery provider will verify pickup'}
+                    </p>
+                  </div>
+
+                  {/* Delivery Verification (Buyer takes photo) */}
+                  <div className="p-4 border border-gray-200 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-emerald-600" />
+                        <span className="font-medium">Verify Your Delivery</span>
+                      </div>
+                      {verificationStatus?.delivery?.photo_verified ? (
+                        <span className="flex items-center gap-1 text-emerald-600 text-sm">
+                          <CheckCircle className="w-4 h-4" /> Verified
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 text-sm">Action Required</span>
+                      )}
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-3">
+                      When you receive the product, take a photo to verify it matches what you ordered.
+                      The AI will compare it with the product listing image.
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {verificationStatus?.pickup?.provider_confirmed && 
+                       !verificationStatus?.delivery?.photo_verified && 
+                       !verificationStatus?.fraud_detected && (
+                        <button
+                          onClick={openPhotoModal}
+                          className="px-4 py-2 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                        >
+                          <Camera className="w-4 h-4" />
+                          Take Delivery Photo
+                          {verificationStatus?.delivery?.attempts_used > 0 && (
+                            <span className="text-xs ml-1">
+                              ({verificationStatus.delivery.attempts_remaining} attempts left)
+                            </span>
+                          )}
+                        </button>
+                      )}
+                      {!verificationStatus?.pickup?.provider_confirmed && (
+                        <span className="text-sm text-gray-500 flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          Waiting for pickup verification
+                        </span>
+                      )}
+                      {verificationStatus?.delivery?.photo_verified && (
+                        <span className="text-sm text-emerald-600 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Photo verified! You can now confirm delivery.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Escrow Status */}
+                  {verificationStatus && (
+                    <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Shield className="w-5 h-5 text-emerald-600" />
+                        <span className="font-medium">Verification Progress</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-1">
+                          {verificationStatus.pickup?.photo_verified ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-gray-300" />
+                          )}
+                          <span className={verificationStatus.pickup?.photo_verified ? 'text-emerald-700' : 'text-gray-500'}>
+                            Pickup verified
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {verificationStatus.pickup?.provider_confirmed ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-gray-300" />
+                          )}
+                          <span className={verificationStatus.pickup?.provider_confirmed ? 'text-emerald-700' : 'text-gray-500'}>
+                            Provider confirmed
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {verificationStatus.delivery?.photo_verified ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-gray-300" />
+                          )}
+                          <span className={verificationStatus.delivery?.photo_verified ? 'text-emerald-700' : 'text-gray-500'}>
+                            Delivery verified
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!verificationStatus.fraud_detected ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className={!verificationStatus.fraud_detected ? 'text-emerald-700' : 'text-red-600'}>
+                            No fraud detected
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Product Details */}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200">
@@ -610,6 +846,123 @@ export default function BuyerOrderDetailPage() {
                 )}
                 Cancel Order
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Verification Modal */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              📦 Verify Your Delivery
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Take a clear photo of the product you received. The AI will compare it with the listing image to verify authenticity.
+            </p>
+            
+            <div className="space-y-4">
+              {/* Photo Preview / Upload Area */}
+              <div 
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                  photoPreview ? 'border-emerald-300 bg-emerald-50' : 'border-gray-300 hover:border-emerald-400'
+                }`}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {photoPreview ? (
+                  <div className="space-y-3">
+                    <img 
+                      src={photoPreview} 
+                      alt="Preview" 
+                      className="max-h-48 mx-auto rounded-lg shadow"
+                    />
+                    <p className="text-sm text-emerald-600">Click to change photo</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Camera className="w-12 h-12 mx-auto text-gray-400" />
+                    <p className="text-gray-600">Click to take or upload photo</p>
+                    <p className="text-xs text-gray-400">JPG, PNG up to 10MB</p>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                />
+              </div>
+
+              {/* Verification Result */}
+              {verificationResult && (
+                <div className={`p-4 rounded-xl ${
+                  verificationResult.is_match 
+                    ? 'bg-emerald-100 border border-emerald-300' 
+                    : 'bg-red-100 border border-red-300'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    {verificationResult.is_match ? (
+                      <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className={`font-semibold ${
+                        verificationResult.is_match ? 'text-emerald-800' : 'text-red-800'
+                      }`}>
+                        {verificationResult.is_match ? 'Photo Verified!' : 'Verification Failed!'}
+                      </p>
+                      <p className={`text-sm ${
+                        verificationResult.is_match ? 'text-emerald-700' : 'text-red-700'
+                      }`}>
+                        {verificationResult.message}
+                      </p>
+                      {verificationResult.next_step && (
+                        <p className="text-sm mt-1 text-gray-600">
+                          Next: {verificationResult.next_step}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowPhotoModal(false);
+                    setVerificationResult(null);
+                    setSelectedPhoto(null);
+                    setPhotoPreview(null);
+                  }}
+                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                >
+                  {verificationResult?.is_match ? 'Close' : 'Cancel'}
+                </button>
+                {!verificationResult && (
+                  <button
+                    onClick={handlePhotoVerification}
+                    disabled={!selectedPhoto || verifyPhotoMutation.isLoading}
+                    className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {verifyPhotoMutation.isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4" />
+                        Verify Photo
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

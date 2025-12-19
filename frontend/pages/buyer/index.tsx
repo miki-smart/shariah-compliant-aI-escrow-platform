@@ -86,7 +86,7 @@ export default function BuyerDashboard() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Welcome back! 👋</h1>
-            <p className="text-gray-500 mt-1">Here's what's happening with your orders today.</p>
+            <p className="text-gray-500 mt-1">Here&apos;s what&apos;s happening with your orders today.</p>
           </div>
           <Link href="/buyer/products">
             <Button variant="gradient">
@@ -203,3 +203,4 @@ export default function BuyerDashboard() {
     </DashboardLayout>
   );
 }
+

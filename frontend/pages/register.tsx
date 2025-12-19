@@ -276,7 +276,7 @@ function RegisterPage() {
               <div className="space-y-6">
                 <div className="text-center">
                   <h2 className="text-2xl font-bold text-gray-900">Choose Your Role</h2>
-                  <p className="text-gray-500 mt-2">Select how you'll use the platform</p>
+                  <p className="text-gray-500 mt-2">Select how you&apos;ll use the platform</p>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

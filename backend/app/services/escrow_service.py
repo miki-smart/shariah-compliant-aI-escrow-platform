@@ -375,6 +375,71 @@ class EscrowService:
         
         result = await self.db.execute(query)
         return list(result.scalars().all())
+    
+    @staticmethod
+    async def release_funds_async(
+        db: AsyncSession,
+        order_id: UUID,
+        reason: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """
+        Static helper to release escrow funds by order ID.
+        Used after delivery verification is complete.
+        """
+        # Get escrow for order
+        result = await db.execute(
+            select(Escrow).where(
+                and_(Escrow.order_id == order_id, Escrow.is_deleted == False)
+            )
+        )
+        escrow = result.scalar_one_or_none()
+        
+        if not escrow:
+            return False, "Escrow not found for order"
+        
+        if escrow.status not in [EscrowStatus.LOCKED, EscrowStatus.PARTIAL_RELEASE]:
+            return False, f"Cannot release funds from {escrow.status.value} escrow"
+        
+        release_amount = escrow.held_amount
+        
+        # Update escrow
+        escrow.held_amount = Decimal("0")
+        escrow.released_amount += release_amount
+        escrow.status = EscrowStatus.RELEASED
+        escrow.released_at = datetime.now(timezone.utc)
+        
+        # Create transaction record
+        transaction = EscrowTransaction(
+            escrow_id=escrow.id,
+            transaction_type=TransactionType.RELEASE,
+            amount=release_amount,
+            description=reason or "Funds released after delivery verification",
+            status="completed",
+        )
+        
+        db.add(transaction)
+        await db.commit()
+        
+        # Emit events
+        await event_dispatcher.dispatch_async(
+            EscrowReleasedEvent(
+                escrow_id=escrow.id,
+                order_id=order_id,
+                amount=float(release_amount),
+            )
+        )
+        
+        await event_dispatcher.dispatch_async(
+            FundsTransferredEvent(
+                escrow_id=escrow.id,
+                from_id=escrow.buyer_id,
+                to_id=escrow.seller_id,
+                amount=float(release_amount),
+            )
+        )
+        
+        logger.info(f"Released {release_amount} from escrow for order {order_id}: {reason}")
+        return True, f"Released {release_amount} to seller"
 
 
 async def get_escrow_service(db: AsyncSession) -> EscrowService:

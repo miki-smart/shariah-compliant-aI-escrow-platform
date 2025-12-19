@@ -74,7 +74,7 @@ export default function RegistrationSuccess() {
               <span className="text-lg font-medium text-emerald-800">Check Your Email</span>
             </div>
             <p className="text-gray-600 text-sm">
-              We've sent a verification link to:
+              We&apos;ve sent a verification link to:
             </p>
             <p className="text-gray-900 font-medium mt-2 text-lg">
               {email || 'your email address'}

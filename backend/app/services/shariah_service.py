@@ -1,6 +1,7 @@
 """
 Shariah Compliance Service
 Validates transactions and products against Islamic finance principles
+Integrates with external AI service for text and image compliance checking
 """
 from typing import Optional, List, Dict, Any
 from uuid import UUID
@@ -19,6 +20,11 @@ from app.models.shariah_result import (
     ViolationType,
 )
 from app.core.logging import get_logger
+from app.services.shariah_compliance_external import (
+    get_shariah_compliance_service,
+    ShariahCheckResult,
+    ShariahDecision,
+)
 
 logger = get_logger(__name__)
 
@@ -105,6 +111,78 @@ class ShariahService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.external_service = get_shariah_compliance_service()
+    
+    async def check_text_compliance(self, text: str) -> Dict[str, Any]:
+        """
+        Check text content for Shariah compliance using external AI service.
+        
+        Args:
+            text: Text to check (product name, description, etc.)
+            
+        Returns:
+            Dict with compliance decision and details
+        """
+        result = await self.external_service.check_text(text)
+        return {
+            "is_compliant": result.is_compliant,
+            "decision": result.decision.value,
+            "reason": result.reason,
+            "detected_issues": result.detected_issues,
+            "confidence": result.confidence,
+            "requires_review": result.requires_review,
+        }
+    
+    async def check_image_compliance(
+        self,
+        image_data: bytes,
+        filename: str = "image.jpg"
+    ) -> Dict[str, Any]:
+        """
+        Check image for Shariah compliance using external AI service.
+        Detects haram products like alcohol bottles, pork products, etc.
+        
+        Args:
+            image_data: Raw image bytes
+            filename: Original filename
+            
+        Returns:
+            Dict with compliance decision and details
+        """
+        result = await self.external_service.check_image(image_data, filename)
+        return {
+            "is_compliant": result.is_compliant,
+            "decision": result.decision.value,
+            "reason": result.reason,
+            "detected_issues": result.detected_issues,
+            "confidence": result.confidence,
+            "requires_review": result.requires_review,
+        }
+    
+    async def check_image_compliance_base64(
+        self,
+        base64_image: str,
+        filename: str = "image.jpg"
+    ) -> Dict[str, Any]:
+        """
+        Check base64-encoded image for Shariah compliance.
+        
+        Args:
+            base64_image: Base64-encoded image string
+            filename: Original filename
+            
+        Returns:
+            Dict with compliance decision and details
+        """
+        result = await self.external_service.check_image_base64(base64_image, filename)
+        return {
+            "is_compliant": result.is_compliant,
+            "decision": result.decision.value,
+            "reason": result.reason,
+            "detected_issues": result.detected_issues,
+            "confidence": result.confidence,
+            "requires_review": result.requires_review,
+        }
     
     async def validate_order(self, order_id: UUID) -> ShariahResult:
         """
@@ -236,7 +314,7 @@ class ShariahService:
         return order
     
     async def _validate_product_compliance(self, product: Product) -> Dict[str, Any]:
-        """Validate product Shariah compliance"""
+        """Validate product Shariah compliance using both local rules and external AI"""
         violations = []
         rules_validated = ["SR004"]
         
@@ -268,7 +346,7 @@ class ShariahService:
                 "violation_type": ViolationType.MASHBOOH_PRODUCT.value,
             })
         
-        # Check product name and description for haram keywords
+        # Check product name and description for haram keywords (local check)
         keyword_check = await self.check_product_keywords(
             product.name,
             product.description or ""
@@ -281,6 +359,34 @@ class ShariahService:
                 "severity": "critical",
                 "violation_type": ViolationType.HARAM_PRODUCT.value,
             })
+        
+        # External AI-powered text compliance check
+        try:
+            text_to_check = f"{product.name}\n{product.description or ''}"
+            external_text_result = await self.external_service.check_text(text_to_check)
+            
+            if external_text_result.is_haram:
+                violations.append({
+                    "rule_code": "SR004",
+                    "rule_name": "Halal Products Only",
+                    "description": f"AI detected haram content: {external_text_result.reason}",
+                    "severity": "critical",
+                    "violation_type": ViolationType.HARAM_PRODUCT.value,
+                    "ai_confidence": external_text_result.confidence,
+                    "detected_issues": external_text_result.detected_issues,
+                })
+            elif external_text_result.requires_review:
+                violations.append({
+                    "rule_code": "SR004",
+                    "rule_name": "Halal Products Only",
+                    "description": f"AI flagged for review: {external_text_result.reason}",
+                    "severity": "high",
+                    "violation_type": ViolationType.MASHBOOH_PRODUCT.value,
+                    "ai_confidence": external_text_result.confidence,
+                    "detected_issues": external_text_result.detected_issues,
+                })
+        except Exception as e:
+            logger.warning(f"External AI text check failed: {str(e)}")
         
         return {"violations": violations, "rules_validated": rules_validated}
     

@@ -102,3 +102,4 @@ export function StatCard({ title, value, icon, trend, className }: StatCardProps
     </Card>
   );
 }
+
