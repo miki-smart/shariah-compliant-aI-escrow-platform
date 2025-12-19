@@ -177,10 +177,57 @@ export interface User {
   id: string;
   username: string;
   email?: string;
-  roles: string[];
+  role?: string;           // Backend returns single role
+  roles?: string[];        // Some places use roles array
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  company_name?: string;
+  is_verified?: boolean;
+  created_at?: string;
 }
 
 export type UserRole = 'BUYER' | 'SELLER' | 'BANK' | 'DELIVERY';
+
+// Registration Types
+export interface RegistrationData {
+  // Step 1: Role Selection
+  role: UserRole;
+  
+  // Step 2: Account Info
+  email: string;
+  password: string;
+  confirm_password: string;
+  
+  // Step 3: Personal/Business Info
+  first_name: string;
+  last_name: string;
+  phone: string;
+  company_name?: string;
+  business_license?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  
+  // Step 4: Shariah Acknowledgment
+  shariah_acknowledged: boolean;
+  terms_accepted: boolean;
+}
+
+export interface RegistrationResponse {
+  user_id: string;
+  email: string;
+  message: string;
+  verification_required: boolean;
+}
+
+export interface RoleInfo {
+  id: UserRole;
+  title: string;
+  description: string;
+  icon: string;
+  features: string[];
+}
 
 // UI State Types
 export interface StatusConfig {

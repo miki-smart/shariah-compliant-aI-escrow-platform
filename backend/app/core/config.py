@@ -42,7 +42,12 @@ class Settings(BaseSettings):
     JWT_AUDIENCE: str = "escrow-backend"
     
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ]
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
