@@ -31,6 +31,9 @@ __all__ = [
     "ShariahService",
     "AuthService",
     "get_auth_service",
+    # External Shariah Compliance
+    "ExternalShariahComplianceService",
+    "get_shariah_compliance_service",
 ]
 
 
@@ -70,6 +73,12 @@ def __getattr__(name):
     
     if name in ("AuthService", "get_auth_service"):
         from app.services.auth_service import AuthService, get_auth_service
+        return locals()[name]
+    
+    if name in ("ExternalShariahComplianceService", "get_shariah_compliance_service"):
+        from app.services.shariah_compliance_external import (
+            ExternalShariahComplianceService, get_shariah_compliance_service
+        )
         return locals()[name]
     
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

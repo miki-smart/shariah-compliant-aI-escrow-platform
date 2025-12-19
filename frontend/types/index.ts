@@ -147,6 +147,7 @@ export interface Order {
   ownership_status: OwnershipStatus;
   
   // Delivery
+  delivery_id?: string;
   delivery_address?: DeliveryAddress;
   delivery_terms?: string;
   expected_delivery_date?: string;

@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     ESCROW_RELEASE_VALIDATION_HOURS: int = 24
     DISPUTE_RESOLUTION_DAYS: int = 14
     
+    # External Services
+    SIMILARITY_SERVICE_URL: str = "http://localhost:8000/verify-image"
+    SHARIAH_COMPLIANCE_SERVICE_URL: str = "http://localhost:8000"
+    SHARIAH_CHECK_TEXT_ENDPOINT: str = "/check-text"
+    SHARIAH_CHECK_IMAGE_ENDPOINT: str = "/check-image"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

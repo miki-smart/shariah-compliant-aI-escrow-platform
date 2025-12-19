@@ -46,7 +46,17 @@ class DeliveryIssueType(str, enum.Enum):
     PARTIAL_DELIVERY = "partial_delivery"
     WRONG_ADDRESS = "wrong_address"
     RECIPIENT_UNAVAILABLE = "recipient_unavailable"
+    PHOTO_MISMATCH = "photo_mismatch"
+    FRAUD_SUSPECTED = "fraud_suspected"
     OTHER = "other"
+
+
+class PhotoVerificationStatus(str, enum.Enum):
+    """Status of photo verification"""
+    PENDING = "pending"
+    VERIFIED = "verified"
+    FAILED = "failed"
+    FRAUD_DETECTED = "fraud_detected"
 
 
 class DeliveryEventType(str, enum.Enum):
@@ -129,6 +139,49 @@ class Delivery(BaseModel, AuditMixin):
     provider_confirmed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     provider_confirmation_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     provider_confirmation_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    
+    # Seller confirmation for pickup (after photo verification)
+    seller_confirmed_pickup: Mapped[bool] = mapped_column(default=False, nullable=False)
+    seller_confirmed_pickup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
+    # Photo verification - Pickup
+    pickup_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    pickup_photo_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pickup_similarity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    pickup_photo_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
+    pickup_verified_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
+    # Photo verification - Delivery
+    delivery_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    delivery_photo_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    delivery_similarity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    delivery_photo_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
+    delivery_verified_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
+    # Photo verification status
+    photo_verification_status: Mapped[PhotoVerificationStatus] = mapped_column(
+        SQLEnum(PhotoVerificationStatus),
+        nullable=False,
+        default=PhotoVerificationStatus.PENDING,
+    )
+    
+    # Retry attempts for photo verification (max 3)
+    pickup_photo_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    delivery_photo_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_photo_attempts: Mapped[int] = mapped_column(default=3, nullable=False)
+    
+    # Seller requests pickup confirmation from provider
+    seller_requested_pickup_confirmation: Mapped[bool] = mapped_column(default=False, nullable=False)
+    seller_requested_pickup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
+    # Provider confirms pickup (after seller request)
+    provider_confirmed_pickup: Mapped[bool] = mapped_column(default=False, nullable=False)
+    provider_confirmed_pickup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
+    # Fraud detection
+    fraud_detected: Mapped[bool] = mapped_column(default=False, nullable=False)
+    fraud_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    fraud_detected_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     
     # Proof of delivery
     delivery_proof: Mapped[Optional[dict]] = mapped_column(
@@ -232,6 +285,111 @@ class Delivery(BaseModel, AuditMixin):
         self.provider_confirmed_at = datetime.now(timezone.utc)
         self.provider_confirmation_reference = reference
         self.provider_confirmation_data = data
+    
+    def confirm_pickup_by_seller(self) -> None:
+        """Record seller confirmation of pickup (after photo verification passes)"""
+        self.seller_confirmed_pickup = True
+        self.seller_confirmed_pickup_at = datetime.now(timezone.utc)
+    
+    def record_pickup_photo_verification(
+        self,
+        photo_url: str,
+        photo_hash: str,
+        similarity_score: float,
+        is_verified: bool
+    ) -> None:
+        """Record pickup photo verification result with retry logic"""
+        self.pickup_photo_url = photo_url
+        self.pickup_photo_hash = photo_hash
+        self.pickup_similarity_score = similarity_score
+        self.pickup_photo_attempts += 1
+        
+        if is_verified:
+            self.pickup_photo_verified = True
+            self.pickup_verified_at = datetime.now(timezone.utc)
+        else:
+            # Failed attempt
+            if self.pickup_photo_attempts >= self.max_photo_attempts:
+                # Max attempts reached - flag as fraud
+                self.fraud_detected = True
+                self.fraud_type = "pickup_photo_mismatch_max_attempts"
+                self.fraud_detected_at = datetime.now(timezone.utc)
+                self.photo_verification_status = PhotoVerificationStatus.FRAUD_DETECTED
+            # Otherwise, allow retry
+    
+    def record_delivery_photo_verification(
+        self,
+        photo_url: str,
+        photo_hash: str,
+        similarity_score: float,
+        is_verified: bool
+    ) -> None:
+        """Record delivery photo verification result with retry logic"""
+        self.delivery_photo_url = photo_url
+        self.delivery_photo_hash = photo_hash
+        self.delivery_similarity_score = similarity_score
+        self.delivery_photo_attempts += 1
+        
+        if is_verified:
+            self.delivery_photo_verified = True
+            self.delivery_verified_at = datetime.now(timezone.utc)
+            if self.pickup_photo_verified:
+                # Both photos verified
+                self.photo_verification_status = PhotoVerificationStatus.VERIFIED
+        else:
+            # Failed attempt
+            if self.delivery_photo_attempts >= self.max_photo_attempts:
+                # Max attempts reached - flag as fraud
+                self.fraud_detected = True
+                self.fraud_type = "delivery_photo_mismatch_max_attempts"
+                self.fraud_detected_at = datetime.now(timezone.utc)
+                self.photo_verification_status = PhotoVerificationStatus.FRAUD_DETECTED
+            # Otherwise, allow retry
+    
+    def request_pickup_confirmation_from_provider(self) -> None:
+        """Seller requests pickup confirmation from delivery provider"""
+        self.seller_requested_pickup_confirmation = True
+        self.seller_requested_pickup_at = datetime.now(timezone.utc)
+    
+    def confirm_pickup_by_provider(self) -> None:
+        """Delivery provider confirms pickup after seller request"""
+        self.provider_confirmed_pickup = True
+        self.provider_confirmed_pickup_at = datetime.now(timezone.utc)
+    
+    @property
+    def is_photo_verified(self) -> bool:
+        """Check if both pickup and delivery photos are verified"""
+        return self.pickup_photo_verified and self.delivery_photo_verified
+    
+    @property
+    def can_release_escrow(self) -> bool:
+        """
+        Check if all conditions are met for escrow release:
+        1. Pickup photo verified
+        2. Delivery photo verified  
+        3. Provider confirmed pickup (after seller request)
+        4. Buyer confirmed delivery
+        5. Provider confirmed delivery
+        6. No fraud detected
+        """
+        return (
+            self.pickup_photo_verified and
+            self.delivery_photo_verified and
+            self.provider_confirmed_pickup and
+            self.buyer_confirmed and
+            self.provider_confirmed and
+            not self.fraud_detected
+        )
+    
+    @property
+    def pickup_attempts_remaining(self) -> int:
+        """Number of pickup photo verification attempts remaining"""
+        return max(0, self.max_photo_attempts - self.pickup_photo_attempts)
+    
+    @property
+    def delivery_attempts_remaining(self) -> int:
+        """Number of delivery photo verification attempts remaining"""
+        return max(0, self.max_photo_attempts - self.delivery_photo_attempts)
     
     def report_issue(
         self,

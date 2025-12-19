@@ -35,12 +35,12 @@ function LoginPage() {
     }
   };
 
-  // Quick login options for demo
+  // Quick login options for demo - credentials from Keycloak realm export
   const quickLogins = [
-    { role: 'Buyer', email: 'buyer@demo.com', icon: '🛒' },
-    { role: 'Seller', email: 'seller@demo.com', icon: '🏪' },
-    { role: 'Bank', email: 'bank@demo.com', icon: '🏦' },
-    { role: 'Delivery', email: 'delivery@demo.com', icon: '🚚' },
+    { role: 'Buyer', email: 'buyer@msme-retail.com', password: 'buyer123', icon: '🛒' },
+    { role: 'Seller', email: 'seller@wholesale-goods.com', password: 'seller123', icon: '🏪' },
+    { role: 'Bank', email: 'bank@islamicbank.com', password: 'bank123', icon: '🏦' },
+    { role: 'Delivery', email: 'delivery@fastlogistics.com', password: 'delivery123', icon: '🚚' },
   ];
 
   return (
@@ -155,7 +155,7 @@ function LoginPage() {
                 type="button"
                 onClick={() => {
                   setEmail(option.email);
-                  setPassword('demo123');
+                  setPassword(option.password);
                 }}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-all text-sm font-medium"
               >

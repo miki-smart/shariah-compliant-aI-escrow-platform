@@ -561,3 +561,269 @@ async def get_shariah_stats(
         "average_compliance_score": round(float(avg_score), 2),
         "by_status": status_counts,
     }
+
+
+# ============ External AI Compliance Checking Endpoints ============
+
+from pydantic import BaseModel, Field
+from fastapi import File, UploadFile
+
+
+class TextComplianceRequest(BaseModel):
+    """Request to check text for Shariah compliance"""
+    text: str = Field(..., description="Text to check for compliance (product name, description, etc.)")
+
+
+class TextComplianceResponse(BaseModel):
+    """Response from text compliance check"""
+    is_compliant: bool
+    decision: str  # HALAL, HARAM, MASHBOOH
+    reason: str
+    detected_issues: list
+    confidence: float
+    requires_review: bool
+
+
+class ImageComplianceRequest(BaseModel):
+    """Request to check image for Shariah compliance (base64)"""
+    image_base64: str = Field(..., description="Base64-encoded image")
+    filename: str = Field(default="image.jpg", description="Original filename")
+
+
+class ImageComplianceResponse(BaseModel):
+    """Response from image compliance check"""
+    is_compliant: bool
+    decision: str  # HALAL, HARAM, MASHBOOH
+    reason: str
+    detected_issues: list
+    confidence: float
+    requires_review: bool
+
+
+@router.post("/check-text", response_model=TextComplianceResponse)
+async def check_text_compliance(
+    request: TextComplianceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Check text content for Shariah compliance using external AI service.
+    
+    This endpoint checks text (product names, descriptions, etc.) for:
+    - Interest/riba-related terms
+    - Haram product mentions (alcohol, pork, gambling, etc.)
+    - Other prohibited content
+    
+    Example input: "ወለድ 12% ብድር" (Interest-based loan)
+    Returns: HARAM decision with reason "Interest-based loan (riba)"
+    """
+    service = ShariahService(db)
+    
+    try:
+        result = await service.check_text_compliance(request.text)
+        
+        logger.info(
+            f"Text compliance check: {result['decision']} (confidence: {result['confidence']})",
+            extra={"user_id": str(current_user.id), "text_length": len(request.text)}
+        )
+        
+        return TextComplianceResponse(**result)
+        
+    except Exception as e:
+        logger.error(f"Text compliance check error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Compliance check failed: {str(e)}"
+        )
+
+
+@router.post("/check-image", response_model=ImageComplianceResponse)
+async def check_image_compliance_base64(
+    request: ImageComplianceRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Check image for Shariah compliance using external AI service (base64 input).
+    
+    This endpoint checks images for:
+    - Alcohol bottles/products
+    - Pork/haram meat products
+    - Gambling materials
+    - Other prohibited items
+    
+    Send image as base64-encoded string in request body.
+    """
+    service = ShariahService(db)
+    
+    try:
+        result = await service.check_image_compliance_base64(
+            request.image_base64,
+            request.filename
+        )
+        
+        logger.info(
+            f"Image compliance check: {result['decision']} (confidence: {result['confidence']})",
+            extra={"user_id": str(current_user.id), "filename": request.filename}
+        )
+        
+        return ImageComplianceResponse(**result)
+        
+    except Exception as e:
+        logger.error(f"Image compliance check error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Compliance check failed: {str(e)}"
+        )
+
+
+@router.post("/check-image-upload", response_model=ImageComplianceResponse)
+async def check_image_compliance_upload(
+    file: UploadFile = File(..., description="Image file to check"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Check uploaded image for Shariah compliance using external AI service.
+    
+    This endpoint accepts direct file upload (multipart/form-data).
+    Supports JPG, PNG, GIF, WEBP formats.
+    
+    Example: Upload image of alcohol bottles
+    Returns: HARAM decision with detected_issues: ["alcohol"]
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
+        )
+    
+    # Read file content
+    try:
+        image_data = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read file: {str(e)}"
+        )
+    
+    service = ShariahService(db)
+    
+    try:
+        result = await service.check_image_compliance(
+            image_data,
+            file.filename or "upload.jpg"
+        )
+        
+        logger.info(
+            f"Image upload compliance check: {result['decision']} (confidence: {result['confidence']})",
+            extra={"user_id": str(current_user.id), "filename": file.filename}
+        )
+        
+        return ImageComplianceResponse(**result)
+        
+    except Exception as e:
+        logger.error(f"Image upload compliance check error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Compliance check failed: {str(e)}"
+        )
+
+
+class ProductComplianceCheckRequest(BaseModel):
+    """Request to check product for Shariah compliance"""
+    name: str = Field(..., description="Product name")
+    description: Optional[str] = Field(None, description="Product description")
+    image_base64: Optional[str] = Field(None, description="Optional product image (base64)")
+    image_filename: Optional[str] = Field(None, description="Image filename")
+
+
+class ProductComplianceCheckResponse(BaseModel):
+    """Response from product compliance check"""
+    overall_compliant: bool
+    overall_decision: str
+    text_check: TextComplianceResponse
+    image_check: Optional[ImageComplianceResponse] = None
+    recommendation: str
+
+
+@router.post("/check-product", response_model=ProductComplianceCheckResponse)
+async def check_product_compliance(
+    request: ProductComplianceCheckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Comprehensive product Shariah compliance check.
+    
+    Checks both text (name + description) and optionally the product image.
+    Use this endpoint when creating or updating products to ensure compliance.
+    
+    Returns overall compliance status based on both text and image analysis.
+    """
+    service = ShariahService(db)
+    
+    try:
+        # Check text content
+        text_to_check = request.name
+        if request.description:
+            text_to_check = f"{request.name}\n{request.description}"
+        
+        text_result = await service.check_text_compliance(text_to_check)
+        text_response = TextComplianceResponse(**text_result)
+        
+        # Check image if provided
+        image_response = None
+        if request.image_base64:
+            image_result = await service.check_image_compliance_base64(
+                request.image_base64,
+                request.image_filename or "product.jpg"
+            )
+            image_response = ImageComplianceResponse(**image_result)
+        
+        # Determine overall compliance
+        overall_compliant = text_response.is_compliant
+        overall_decision = text_response.decision
+        
+        if image_response:
+            # Image takes precedence if it detects haram
+            if not image_response.is_compliant:
+                overall_compliant = False
+                if image_response.decision == "HARAM":
+                    overall_decision = "HARAM"
+                elif text_response.decision != "HARAM":
+                    overall_decision = image_response.decision
+        
+        # Generate recommendation
+        if overall_decision == "HARAM":
+            recommendation = "Product is NOT compliant with Shariah. Do not list this product."
+        elif overall_decision == "MASHBOOH":
+            recommendation = "Product requires manual review before listing."
+        else:
+            recommendation = "Product is Shariah compliant. Safe to list."
+        
+        logger.info(
+            f"Product compliance check: {overall_decision}",
+            extra={
+                "user_id": str(current_user.id),
+                "product_name": request.name,
+                "has_image": request.image_base64 is not None
+            }
+        )
+        
+        return ProductComplianceCheckResponse(
+            overall_compliant=overall_compliant,
+            overall_decision=overall_decision,
+            text_check=text_response,
+            image_check=image_response,
+            recommendation=recommendation,
+        )
+        
+    except Exception as e:
+        logger.error(f"Product compliance check error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Compliance check failed: {str(e)}"
+        )
