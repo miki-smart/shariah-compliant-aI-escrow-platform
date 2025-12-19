@@ -1,0 +1,412 @@
+{
+  "id": "escrow-platform",
+  "realm": "escrow-platform",
+  "displayName": "Shariah-Compliant Escrow Platform",
+  "displayNameHtml": "<b>Shariah-Compliant</b> Escrow Platform",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 3600,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "offlineSessionMaxLifespan": 5184000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Platform administrator with full access",
+        "composite": false
+      },
+      {
+        "name": "bank",
+        "description": "Islamic bank representative for financing approval",
+        "composite": false
+      },
+      {
+        "name": "buyer",
+        "description": "MSME buyer who purchases products",
+        "composite": false
+      },
+      {
+        "name": "seller",
+        "description": "MSME seller who sells products",
+        "composite": false
+      },
+      {
+        "name": "delivery_provider",
+        "description": "Third-party delivery provider",
+        "composite": false
+      },
+      {
+        "name": "shariah_officer",
+        "description": "Shariah compliance officer for validation",
+        "composite": false
+      }
+    ],
+    "client": {
+      "escrow-api": [
+        {
+          "name": "view_orders",
+          "description": "View orders"
+        },
+        {
+          "name": "create_orders",
+          "description": "Create new orders"
+        },
+        {
+          "name": "manage_escrow",
+          "description": "Manage escrow accounts"
+        },
+        {
+          "name": "approve_financing",
+          "description": "Approve bank financing"
+        },
+        {
+          "name": "validate_shariah",
+          "description": "Validate Shariah compliance"
+        },
+        {
+          "name": "manage_delivery",
+          "description": "Manage deliveries"
+        },
+        {
+          "name": "admin_access",
+          "description": "Full admin access"
+        }
+      ]
+    }
+  },
+  "groups": [
+    {
+      "name": "Platform Admins",
+      "path": "/Platform Admins",
+      "realmRoles": ["admin"]
+    },
+    {
+      "name": "Bank Officers",
+      "path": "/Bank Officers",
+      "realmRoles": ["bank"]
+    },
+    {
+      "name": "Shariah Officers",
+      "path": "/Shariah Officers",
+      "realmRoles": ["shariah_officer"]
+    },
+    {
+      "name": "Delivery Providers",
+      "path": "/Delivery Providers",
+      "realmRoles": ["delivery_provider"]
+    },
+    {
+      "name": "Buyers",
+      "path": "/Buyers",
+      "realmRoles": ["buyer"]
+    },
+    {
+      "name": "Sellers",
+      "path": "/Sellers",
+      "realmRoles": ["seller"]
+    }
+  ],
+  "users": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "username": "admin",
+      "email": "admin@escrow-platform.com",
+      "firstName": "Platform",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"],
+      "groups": ["/Platform Admins"],
+      "attributes": {
+        "role": ["admin"],
+        "department": ["Administration"]
+      }
+    },
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "username": "bank_officer",
+      "email": "bank@islamicbank.com",
+      "firstName": "Ahmad",
+      "lastName": "Ibrahim",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bank123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["bank"],
+      "groups": ["/Bank Officers"],
+      "attributes": {
+        "role": ["bank"],
+        "bank_name": ["Islamic Bank Malaysia"],
+        "employee_id": ["IBK-001"],
+        "department": ["Trade Financing"]
+      }
+    },
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "username": "shariah_officer",
+      "email": "shariah@escrow-platform.com",
+      "firstName": "Dr. Yusuf",
+      "lastName": "Al-Qaradawi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "shariah123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["shariah_officer"],
+      "groups": ["/Shariah Officers"],
+      "attributes": {
+        "role": ["shariah_officer"],
+        "certification": ["Certified Shariah Advisor"],
+        "department": ["Shariah Compliance"]
+      }
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "username": "delivery_user",
+      "email": "delivery@fastlogistics.com",
+      "firstName": "Ali",
+      "lastName": "Rahman",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "delivery123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["delivery_provider"],
+      "groups": ["/Delivery Providers"],
+      "attributes": {
+        "role": ["delivery_provider"],
+        "company_name": ["Fast Logistics Sdn Bhd"],
+        "license_number": ["DL-2024-001"]
+      }
+    },
+    {
+      "id": "55555555-5555-5555-5555-555555555555",
+      "username": "buyer_demo",
+      "email": "buyer@msme-retail.com",
+      "firstName": "Hassan",
+      "lastName": "Abdullah",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "buyer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["buyer"],
+      "groups": ["/Buyers"],
+      "attributes": {
+        "role": ["buyer"],
+        "business_name": ["MSME Retail Shop"],
+        "business_registration": ["SSM-2024-001234"]
+      }
+    },
+    {
+      "id": "66666666-6666-6666-6666-666666666666",
+      "username": "seller_demo",
+      "email": "seller@wholesale-goods.com",
+      "firstName": "Fatimah",
+      "lastName": "Zahra",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "seller123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["seller"],
+      "groups": ["/Sellers"],
+      "attributes": {
+        "role": ["seller"],
+        "business_name": ["Wholesale Goods Trading"],
+        "business_registration": ["SSM-2024-005678"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "escrow-api",
+      "name": "Escrow Platform API",
+      "description": "Backend API client for the escrow platform",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "escrow-api-secret-2024",
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000",
+        "http://localhost:3000"
+      ],
+      "bearerOnly": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ],
+      "protocolMappers": [
+        {
+          "name": "role-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "user-id-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "user_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "escrow-frontend",
+      "name": "Escrow Platform Frontend",
+      "description": "Frontend SPA client for the escrow platform",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "bearerOnly": false,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for user roles",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "user.attribute": "foo",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "smtpServer": {},
+  "eventsEnabled": true,
+  "eventsListeners": ["jboss-logging"],
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "REGISTER",
+    "REGISTER_ERROR"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true
+}
