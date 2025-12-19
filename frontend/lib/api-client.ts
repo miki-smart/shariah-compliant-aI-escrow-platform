@@ -8,32 +8,18 @@ import type {
   Product,
   ProductCreate,
   Escrow,
-  EscrowBalance,
-  EscrowFundRequest,
-  EscrowOperationResult,
-  EscrowTransaction,
-  EscrowReleaseConditionsResponse,
   ShariahResult,
-  ShariahStatusResponse,
-  ShariahCertificate,
   ShariahValidationRequest,
   ShariahReviewRequest,
-  ProductKeywordCheckRequest,
-  ProductKeywordCheckResponse,
-  ShariahRule,
   AIDecision,
   AIEvaluationRequest,
   Delivery,
   DeliveryCreate,
   DeliveryStatusUpdate,
   DeliveryConfirmation,
-  ReleaseGateResponse,
-  ManualReleaseRequest,
-  ReleaseExecutionResult,
-  AuditLogListResponse,
-  AuditLogEntry,
-  OrderAuditTrail,
-  AuditLogSummary,
+  RegistrationData,
+  RegistrationResponse,
+  User,
 } from '@/types';
 
 class ApiClient {
@@ -136,105 +122,38 @@ class ApiClient {
     return response.data;
   }
 
-  async getEscrowById(escrowId: string): Promise<Escrow> {
-    const response = await this.client.get(`/escrow/${escrowId}`);
+  async releaseEscrow(orderId: string): Promise<Escrow> {
+    const response = await this.client.post(`/escrow/${orderId}/release`);
     return response.data;
   }
 
-  async getEscrowBalance(orderId: string): Promise<EscrowBalance> {
-    const response = await this.client.get(`/escrow/${orderId}/balance`);
-    return response.data;
-  }
-
-  async fundEscrow(orderId: string, data: EscrowFundRequest): Promise<EscrowOperationResult> {
-    const response = await this.client.post(`/escrow/${orderId}/fund`, data);
-    return response.data;
-  }
-
-  async releaseEscrow(orderId: string, reason?: string): Promise<EscrowOperationResult> {
-    const response = await this.client.post(`/escrow/${orderId}/release`, {
-      reason,
+  async revertEscrow(orderId: string, reason?: string): Promise<Escrow> {
+    const response = await this.client.post(`/escrow/${orderId}/revert`, null, {
+      params: { reason },
     });
     return response.data;
   }
 
-  async refundEscrow(orderId: string, reason: string, refundTo: string = 'buyer'): Promise<EscrowOperationResult> {
-    const response = await this.client.post(`/escrow/${orderId}/refund`, {
-      reason,
-      refund_to: refundTo,
-    });
-    return response.data;
-  }
-
-  async freezeEscrow(orderId: string, reason: string): Promise<EscrowOperationResult> {
-    const response = await this.client.post(`/escrow/${orderId}/freeze`, {
-      reason,
-    });
-    return response.data;
-  }
-
-  async getEscrowTransactions(
-    orderId: string,
-    page: number = 1,
-    pageSize: number = 20
-  ): Promise<{ transactions: EscrowTransaction[]; total: number; page: number; page_size: number; total_pages: number }> {
-    const response = await this.client.get(`/escrow/${orderId}/transactions`, {
-      params: { page, page_size: pageSize },
-    });
-    return response.data;
-  }
-
-  async getReleaseConditions(orderId: string): Promise<EscrowReleaseConditionsResponse> {
-    const response = await this.client.get(`/escrow/${orderId}/release-conditions`);
-    return response.data;
-  }
-
-  async updateReleaseCondition(
-    orderId: string,
-    conditionName: string,
-    met: boolean
-  ): Promise<{ success: boolean; message: string; all_conditions_met: boolean; can_release: boolean }> {
-    const response = await this.client.put(`/escrow/${orderId}/release-conditions/${conditionName}`, null, {
-      params: { met },
+  async freezeEscrow(orderId: string, reason?: string): Promise<Escrow> {
+    const response = await this.client.post(`/escrow/${orderId}/freeze`, null, {
+      params: { reason },
     });
     return response.data;
   }
 
   // ============ SHARIAH ============
   async getShariahResult(orderId: string): Promise<ShariahResult> {
-    const response = await this.client.get(`/shariah/${orderId}/result`);
+    const response = await this.client.get(`/shariah/order/${orderId}`);
     return response.data;
   }
 
-  async getShariahStatus(orderId: string): Promise<ShariahStatusResponse> {
-    const response = await this.client.get(`/shariah/${orderId}/status`);
+  async validateShariah(data: ShariahValidationRequest): Promise<ShariahResult> {
+    const response = await this.client.post('/shariah/validate', data);
     return response.data;
   }
 
-  async validateShariah(orderId: string, forceRevalidation: boolean = false): Promise<ShariahResult> {
-    const response = await this.client.post(`/shariah/validate/${orderId}`, null, {
-      params: { force_revalidation: forceRevalidation },
-    });
-    return response.data;
-  }
-
-  async getShariahCertificate(orderId: string): Promise<ShariahCertificate> {
-    const response = await this.client.get(`/shariah/${orderId}/certificate`);
-    return response.data;
-  }
-
-  async reviewShariah(orderId: string, data: ShariahReviewRequest): Promise<ShariahResult> {
-    const response = await this.client.post(`/shariah/${orderId}/review`, data);
-    return response.data;
-  }
-
-  async checkProductKeywords(data: ProductKeywordCheckRequest): Promise<ProductKeywordCheckResponse> {
-    const response = await this.client.post('/shariah/check-keywords', data);
-    return response.data;
-  }
-
-  async getShariahRules(): Promise<{ rules: ShariahRule[]; total: number }> {
-    const response = await this.client.get('/shariah/rules');
+  async reviewShariah(data: ShariahReviewRequest): Promise<ShariahResult> {
+    const response = await this.client.post('/shariah/review', data);
     return response.data;
   }
 
@@ -284,78 +203,111 @@ class ApiClient {
     return response.data;
   }
 
-  // ============ RELEASE GATE ============
-  async checkReleaseConditions(orderId: string): Promise<ReleaseGateResponse> {
-    const response = await this.client.get(`/release/conditions/${orderId}`);
+  // ============ AUTH & REGISTRATION ============
+  async register(data: RegistrationData): Promise<RegistrationResponse> {
+    // Map frontend role values to backend enum values
+    const roleMapping: Record<string, string> = {
+      'BUYER': 'buyer',
+      'SELLER': 'seller',
+      'BANK': 'bank',
+      'DELIVERY': 'delivery_provider',
+    };
+    
+    const payload = {
+      ...data,
+      role: roleMapping[data.role] || data.role.toLowerCase(),
+    };
+    
+    const response = await this.client.post('/auth/register', payload);
     return response.data;
   }
 
-  async executeRelease(orderId: string): Promise<ReleaseExecutionResult> {
-    const response = await this.client.post(`/release/execute/${orderId}`);
+  async login(
+    email: string, 
+    password: string, 
+    rememberMe: boolean = false
+  ): Promise<{ user: User; token: string; refresh_token?: string }> {
+    const response = await this.client.post('/auth/login', { 
+      email, 
+      password,
+      remember_me: rememberMe,
+    });
+    
+    // Map response to expected format
+    const result = {
+      user: response.data.user,
+      token: response.data.access_token,
+      refresh_token: response.data.refresh_token,
+    };
+    
+    return result;
+  }
+
+  async refreshTokens(refreshToken: string): Promise<{ user: User; token: string; refresh_token?: string }> {
+    const response = await this.client.post('/auth/refresh', { 
+      refresh_token: refreshToken 
+    });
+    
+    return {
+      user: response.data.user,
+      token: response.data.access_token,
+      refresh_token: response.data.refresh_token,
+    };
+  }
+
+  async verifyEmail(token: string): Promise<{ message: string; success: boolean }> {
+    const response = await this.client.post('/auth/verify-email', { token });
     return response.data;
   }
 
-  async manualRelease(orderId: string, data: ManualReleaseRequest): Promise<ReleaseExecutionResult> {
-    const response = await this.client.post(`/release/manual/${orderId}`, data);
+  async resendVerification(email: string): Promise<{ message: string; success: boolean }> {
+    const response = await this.client.post('/auth/resend-verification', { email });
     return response.data;
   }
 
-  async checkAutoRelease(orderId: string): Promise<{
-    order_id: string;
-    should_release: boolean;
-    release_triggered: boolean;
-    conditions_summary: Record<string, boolean>;
-    message: string;
-  }> {
-    const response = await this.client.get(`/release/auto-check/${orderId}`);
+  async forgotPassword(email: string): Promise<{ message: string; success: boolean }> {
+    const response = await this.client.post('/auth/forgot-password', { email });
     return response.data;
   }
 
-  async simulateReleaseCheck(orderId: string, aiScenario?: string): Promise<ReleaseGateResponse> {
-    const response = await this.client.post(`/release/simulate/${orderId}`, null, {
-      params: aiScenario ? { ai_scenario: aiScenario } : undefined,
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string; success: boolean }> {
+    const response = await this.client.post('/auth/reset-password', { 
+      token, 
+      new_password: newPassword,
+      confirm_password: newPassword,
     });
     return response.data;
   }
 
-  // ============ AUDIT ============
-  async getAuditLogs(params: {
-    page?: number;
-    page_size?: number;
-    entity_type?: string;
-    entity_id?: string;
-    action?: string;
-    actor_type?: string;
-    start_date?: string;
-    end_date?: string;
-  } = {}): Promise<AuditLogListResponse> {
-    const response = await this.client.get('/audit/logs', { params });
+  async changePassword(
+    currentPassword: string, 
+    newPassword: string
+  ): Promise<{ message: string; success: boolean }> {
+    const response = await this.client.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+      confirm_password: newPassword,
+    });
     return response.data;
   }
 
-  async getAuditLogDetail(logId: string): Promise<AuditLogEntry> {
-    const response = await this.client.get(`/audit/logs/${logId}`);
+  async getCurrentUser(): Promise<User> {
+    const response = await this.client.get('/auth/me');
     return response.data;
   }
 
-  async getOrderAuditTrail(orderId: string): Promise<OrderAuditTrail> {
-    const response = await this.client.get(`/audit/order/${orderId}`);
+  async updateProfile(data: Partial<User>): Promise<User> {
+    const response = await this.client.patch('/auth/me', data);
     return response.data;
   }
 
-  async getAuditSummary(days: number = 7): Promise<AuditLogSummary> {
-    const response = await this.client.get('/audit/summary', { params: { days } });
-    return response.data;
-  }
-
-  async getAuditActions(): Promise<string[]> {
-    const response = await this.client.get('/audit/actions');
-    return response.data;
-  }
-
-  async getAuditEntityTypes(): Promise<string[]> {
-    const response = await this.client.get('/audit/entity-types');
-    return response.data;
+  logout(): void {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_data');
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   }
 }
 

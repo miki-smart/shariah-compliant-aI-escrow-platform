@@ -15,6 +15,26 @@ from app.models.user import User, UserRole, UserStatus, BusinessType
 from app.models.product import Product, ShariahCategory, ProductCategory, ProductStatus, HaramProductKeyword
 from app.models.shariah_result import ShariahRule, ViolationType
 from app.core.logging import get_logger
+import bcrypt
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt"""
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
+
+
+# Default passwords for seed users (matching Keycloak realm config)
+USER_PASSWORDS = {
+    "admin": "admin123",
+    "bank_officer": "bank123",
+    "shariah_officer": "shariah123",
+    "delivery_user": "delivery123",
+    "buyer_demo": "buyer123",
+    "seller_demo": "seller123",
+}
 
 logger = get_logger(__name__)
 
@@ -300,6 +320,9 @@ async def seed_users(db: AsyncSession) -> None:
             country=user_data.get("country", "MY"),
             shariah_certification=user_data.get("shariah_certification"),
             is_shariah_compliant=user_data.get("is_shariah_compliant", True),
+            keycloak_attributes={
+                "password_hash": hash_password(USER_PASSWORDS.get(name, "password123"))
+            }
         )
         db.add(user)
         logger.info(f"Created user: {name} ({user_data['role'].value})")
