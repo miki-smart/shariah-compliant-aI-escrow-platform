@@ -6,7 +6,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, StatCard } from '@/components/ui/Card';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order, Product } from '@/types';
+import { Order, ProductListResponse } from '@/types';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { Package, FileText, Plus, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
@@ -17,13 +17,14 @@ export default function SellerDashboard() {
     () => apiClient.getOrders({ limit: 5 })
   );
 
-  const { data: products } = useQuery<Product[]>(
+  const { data: productsData } = useQuery<ProductListResponse>(
     'seller-products',
-    () => apiClient.getProducts({ limit: 5 })
+    () => apiClient.getMyProducts({ page: 1, page_size: 10 })
   );
 
+  const products = productsData?.products || [];
   const pendingOrders = orders?.filter((o) => o.status === 'BANK_PENDING' || o.status === 'ESCROW_LOCKED') || [];
-  const activeProducts = products?.filter((p) => p.is_active) || [];
+  const activeProducts = products.filter((p) => p.is_active);
   const totalRevenue = orders?.filter((o) => o.status === 'ESCROW_RELEASED')
     .reduce((sum, o) => sum + o.total_amount, 0) || 0;
 
@@ -58,7 +59,7 @@ export default function SellerDashboard() {
           />
           <StatCard
             title="Total Revenue"
-            value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalRevenue)}
+            value={`ETB ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(totalRevenue)}`}
             icon={<DollarSign className="w-6 h-6 text-emerald-600" />}
             trend={{ value: 15, positive: true }}
           />
@@ -143,7 +144,7 @@ export default function SellerDashboard() {
                     <div>
                       <p className="font-medium text-gray-900">Order #{order.id.slice(0, 8)}</p>
                       <p className="text-sm text-gray-500">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(order.total_amount)}
+                        ETB {new Intl.NumberFormat('en-US').format(order.total_amount)}
                       </p>
                     </div>
                   </div>

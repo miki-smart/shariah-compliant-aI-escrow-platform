@@ -158,7 +158,7 @@ export default function DeliveryDashboard() {
                     <div>
                       <p className="font-medium text-gray-900">Order #{order.id.slice(0, 8)}</p>
                       <p className="text-sm text-gray-500">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(order.total_amount)}
+                        ETB {new Intl.NumberFormat('en-US').format(order.total_amount)}
                       </p>
                     </div>
                   </div>

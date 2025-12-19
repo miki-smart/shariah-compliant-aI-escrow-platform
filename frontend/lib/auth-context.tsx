@@ -59,6 +59,28 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Helper function to parse API error detail into a string message
+function parseErrorDetail(detail: any): string {
+  if (!detail) return '';
+  
+  // If it's already a string, return it
+  if (typeof detail === 'string') return detail;
+  
+  // If it's an array (Pydantic validation errors)
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e: any) => e.msg || e.message || (typeof e === 'string' ? e : JSON.stringify(e)))
+      .join('. ');
+  }
+  
+  // If it's an object with a message property
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  
+  return String(detail);
+}
+
 export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const [state, setState] = useState<AuthState>({
@@ -225,7 +247,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const redirectPath = dashboardRoutes[role] || '/buyer';
       router.push(redirectPath);
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Login failed. Please check your credentials.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Login failed. Please check your credentials.';
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -252,7 +274,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         message: response.message || 'Registration successful. Please check your email.',
       };
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Registration failed. Please try again.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Registration failed. Please try again.';
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -280,7 +302,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await apiClient.verifyEmail(token);
       return { success: true, message: response.message };
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Verification failed.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Verification failed.';
       return { success: false, message };
     }
   }, []);
@@ -291,7 +313,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await apiClient.resendVerification(email);
       return { success: true, message: response.message };
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Failed to resend verification.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Failed to resend verification.';
       return { success: false, message };
     }
   }, []);
@@ -302,7 +324,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await apiClient.forgotPassword(email);
       return { success: true, message: response.message };
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Failed to send reset email.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Failed to send reset email.';
       return { success: false, message };
     }
   }, []);
@@ -313,7 +335,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await apiClient.resetPassword(token, password);
       return { success: true, message: response.message };
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Password reset failed.';
+      const message = parseErrorDetail(error?.response?.data?.detail) || 'Password reset failed.';
       return { success: false, message };
     }
   }, []);
