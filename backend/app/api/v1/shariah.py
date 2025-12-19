@@ -1,0 +1,477 @@
+"""
+Shariah Compliance API Routes
+Endpoints for Shariah validation and compliance operations
+"""
+from typing import Optional, List
+from uuid import UUID
+from datetime import datetime, timezone
+import secrets
+import hashlib
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+
+from app.core.database import get_db
+from app.core.dependencies import get_current_active_user, require_roles
+from app.core.logging import get_logger
+from app.models.user import User, UserRole
+from app.models.order import Order, OrderStatus, ShariahStatus
+from app.models.product import Product
+from app.models.shariah_result import ShariahResult, ShariahComplianceStatus, ViolationType
+from app.services.shariah_service import ShariahService, DEFAULT_SHARIAH_RULES
+from app.schemas.shariah import (
+    ShariahValidationRequest,
+    ShariahReviewRequest,
+    ShariahResultResponse,
+    ShariahStatusResponse,
+    ShariahCertificateResponse,
+    ProductKeywordCheckRequest,
+    ProductKeywordCheckResponse,
+    ShariahRuleResponse,
+    ShariahRulesListResponse,
+    ViolationResponse,
+)
+
+logger = get_logger(__name__)
+router = APIRouter(prefix="/shariah", tags=["Shariah Compliance"])
+
+
+# ============ Helper Functions ============
+
+def result_to_response(result: ShariahResult) -> ShariahResultResponse:
+    """Convert ShariahResult model to response schema"""
+    violations = None
+    if result.violations:
+        violations = [
+            ViolationResponse(
+                rule_code=v.get("rule_code", ""),
+                rule_name=v.get("rule_name", ""),
+                description=v.get("description", ""),
+                severity=v.get("severity", "medium"),
+                violation_type=v.get("violation_type", "other"),
+            )
+            for v in result.violations
+        ]
+    
+    return ShariahResultResponse(
+        id=result.id,
+        order_id=result.order_id,
+        status=result.status,
+        compliance_score=result.compliance_score,
+        product_is_halal=result.product_is_halal,
+        product_category_compliant=result.product_category_compliant,
+        haram_products_detected=result.haram_products_detected,
+        haram_indicators=result.haram_indicators,
+        transaction_compliant=result.transaction_compliant,
+        contract_type_valid=result.contract_type_valid,
+        no_riba_detected=result.no_riba_detected,
+        no_gharar_detected=result.no_gharar_detected,
+        no_maisir_detected=result.no_maisir_detected,
+        violations=violations,
+        violation_count=result.violation_count,
+        primary_violation_type=result.primary_violation_type,
+        validation_method=result.validation_method,
+        rules_applied=result.rules_applied,
+        principles_validated=result.principles_validated,
+        requires_manual_review=result.requires_manual_review,
+        review_reason=result.review_reason,
+        reviewed_by=result.reviewed_by,
+        reviewed_at=result.reviewed_at,
+        review_notes=result.review_notes,
+        review_decision=result.review_decision,
+        explanation=result.explanation,
+        validated_at=result.validated_at,
+        created_at=result.created_at,
+        updated_at=result.updated_at,
+    )
+
+
+async def get_order_or_404(db: AsyncSession, order_id: UUID) -> Order:
+    """Get order by ID or raise 404"""
+    result = await db.execute(
+        select(Order).where(Order.id == order_id, Order.is_deleted == False)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order {order_id} not found"
+        )
+    return order
+
+
+# ============ Shariah Endpoints ============
+
+@router.post("/validate/{order_id}", response_model=ShariahResultResponse)
+async def validate_order(
+    order_id: UUID,
+    force_revalidation: bool = Query(False, description="Force revalidation even if already validated"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Validate an order against Shariah compliance rules.
+    
+    This endpoint:
+    1. Checks product against haram categories and keywords
+    2. Validates transaction structure against Islamic contract principles
+    3. Checks for riba, gharar, and maisir
+    4. Returns compliance status and any violations
+    
+    The validation is rule-based and completes within 1 second.
+    """
+    order = await get_order_or_404(db, order_id)
+    
+    # Check authorization
+    if current_user.role not in [UserRole.ADMIN, UserRole.BANK]:
+        if current_user.id not in [order.buyer_id, order.seller_id]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to validate this order"
+            )
+    
+    # Check if already validated (unless force_revalidation)
+    if not force_revalidation:
+        existing_result = await db.execute(
+            select(ShariahResult).where(ShariahResult.order_id == order_id)
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing and existing.status != ShariahComplianceStatus.PENDING:
+            return result_to_response(existing)
+    
+    # Perform validation
+    shariah_service = ShariahService(db)
+    
+    try:
+        result = await shariah_service.validate_order(order_id)
+        
+        # Update escrow release condition if escrow exists
+        from app.models.escrow import Escrow
+        escrow_result = await db.execute(
+            select(Escrow).where(Escrow.order_id == order_id, Escrow.is_deleted == False)
+        )
+        escrow = escrow_result.scalar_one_or_none()
+        if escrow:
+            is_compliant = result.status == ShariahComplianceStatus.COMPLIANT
+            escrow.update_release_condition("shariah_compliant", is_compliant)
+            await db.commit()
+        
+        logger.info(f"Shariah validation completed for order {order_id}: {result.status}")
+        return result_to_response(result)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Shariah validation error for order {order_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Shariah validation failed. Please try again."
+        )
+
+
+@router.get("/{order_id}/status", response_model=ShariahStatusResponse)
+async def get_shariah_status(
+    order_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get Shariah compliance status for an order.
+    
+    Returns a simplified status view for UI display.
+    """
+    order = await get_order_or_404(db, order_id)
+    
+    # Check authorization
+    if current_user.role not in [UserRole.ADMIN, UserRole.BANK]:
+        if current_user.id not in [order.buyer_id, order.seller_id]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this order's Shariah status"
+            )
+    
+    result = await db.execute(
+        select(ShariahResult).where(ShariahResult.order_id == order_id)
+    )
+    shariah_result = result.scalar_one_or_none()
+    
+    if not shariah_result:
+        return ShariahStatusResponse(
+            order_id=order_id,
+            status=ShariahComplianceStatus.PENDING,
+            is_compliant=False,
+            violation_count=0,
+            primary_violation=None,
+            validated_at=None,
+            requires_review=False,
+            can_proceed=False,
+        )
+    
+    is_compliant = shariah_result.status == ShariahComplianceStatus.COMPLIANT
+    can_proceed = shariah_result.status in [
+        ShariahComplianceStatus.COMPLIANT,
+    ]
+    
+    primary_violation = None
+    if shariah_result.primary_violation_type:
+        primary_violation = shariah_result.primary_violation_type.value
+    
+    return ShariahStatusResponse(
+        order_id=order_id,
+        status=shariah_result.status,
+        is_compliant=is_compliant,
+        violation_count=shariah_result.violation_count,
+        primary_violation=primary_violation,
+        validated_at=shariah_result.validated_at,
+        requires_review=shariah_result.requires_manual_review,
+        can_proceed=can_proceed,
+    )
+
+
+@router.get("/{order_id}/result", response_model=ShariahResultResponse)
+async def get_shariah_result(
+    order_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get detailed Shariah validation result for an order.
+    """
+    order = await get_order_or_404(db, order_id)
+    
+    # Check authorization
+    if current_user.role not in [UserRole.ADMIN, UserRole.BANK]:
+        if current_user.id not in [order.buyer_id, order.seller_id]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this order's Shariah result"
+            )
+    
+    result = await db.execute(
+        select(ShariahResult).where(ShariahResult.order_id == order_id)
+    )
+    shariah_result = result.scalar_one_or_none()
+    
+    if not shariah_result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shariah validation not found for order {order_id}. Please trigger validation first."
+        )
+    
+    return result_to_response(shariah_result)
+
+
+@router.get("/{order_id}/certificate", response_model=ShariahCertificateResponse)
+async def get_shariah_certificate(
+    order_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get Shariah compliance certificate for a compliant order.
+    
+    Certificate is only available for orders with COMPLIANT status.
+    """
+    order = await get_order_or_404(db, order_id)
+    
+    # Check authorization
+    if current_user.role not in [UserRole.ADMIN, UserRole.BANK]:
+        if current_user.id not in [order.buyer_id, order.seller_id]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this order's certificate"
+            )
+    
+    result = await db.execute(
+        select(ShariahResult).where(ShariahResult.order_id == order_id)
+    )
+    shariah_result = result.scalar_one_or_none()
+    
+    if not shariah_result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shariah validation not found for order {order_id}"
+        )
+    
+    if shariah_result.status != ShariahComplianceStatus.COMPLIANT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Certificate only available for compliant orders. Current status: {shariah_result.status.value}"
+        )
+    
+    # Get product info
+    product_result = await db.execute(
+        select(Product).where(Product.id == order.product_id)
+    )
+    product = product_result.scalar_one_or_none()
+    
+    # Get buyer and seller info
+    buyer_result = await db.execute(select(User).where(User.id == order.buyer_id))
+    seller_result = await db.execute(select(User).where(User.id == order.seller_id))
+    buyer = buyer_result.scalar_one_or_none()
+    seller = seller_result.scalar_one_or_none()
+    
+    # Generate certificate ID and verification code
+    cert_data = f"{order_id}{shariah_result.validated_at.isoformat()}"
+    verification_code = hashlib.sha256(cert_data.encode()).hexdigest()[:16].upper()
+    certificate_id = f"CERT-{secrets.token_hex(4).upper()}"
+    
+    return ShariahCertificateResponse(
+        certificate_id=certificate_id,
+        order_id=order_id,
+        order_number=order.order_number,
+        status=shariah_result.status,
+        compliance_score=shariah_result.compliance_score,
+        is_compliant=True,
+        product_name=product.name if product else "Unknown",
+        product_category=product.category if product else "Unknown",
+        order_amount=float(order.total_amount),
+        currency=order.currency,
+        contract_type=order.contract_type.value,
+        buyer_name=buyer.full_name if buyer else "Unknown",
+        seller_name=seller.business_name if seller and hasattr(seller, 'business_name') else (seller.full_name if seller else "Unknown"),
+        validation_method=shariah_result.validation_method,
+        principles_validated=shariah_result.principles_validated or [],
+        rules_applied=shariah_result.rules_applied or [],
+        validated_at=shariah_result.validated_at,
+        certificate_issued_at=datetime.now(timezone.utc),
+        valid_until=None,  # Certificate valid indefinitely for this order
+        verification_code=verification_code,
+        issued_by="Shariah Escrow Platform",
+    )
+
+
+@router.post("/{order_id}/review", response_model=ShariahResultResponse)
+async def review_shariah_result(
+    order_id: UUID,
+    request: ShariahReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.BANK)),
+):
+    """
+    Perform manual review on a Shariah validation result.
+    
+    Only available for orders with REQUIRES_REVIEW status.
+    Accessible by: Admin or Bank only
+    """
+    order = await get_order_or_404(db, order_id)
+    
+    result = await db.execute(
+        select(ShariahResult).where(ShariahResult.order_id == order_id)
+    )
+    shariah_result = result.scalar_one_or_none()
+    
+    if not shariah_result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shariah validation not found for order {order_id}"
+        )
+    
+    if shariah_result.status != ShariahComplianceStatus.REQUIRES_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Manual review only available for orders requiring review. Current status: {shariah_result.status.value}"
+        )
+    
+    # Process review decision
+    if request.decision.lower() == "approve":
+        shariah_result.status = ShariahComplianceStatus.COMPLIANT
+        order.shariah_status = ShariahStatus.COMPLIANT
+    elif request.decision.lower() == "reject":
+        shariah_result.status = ShariahComplianceStatus.NON_COMPLIANT
+        order.shariah_status = ShariahStatus.NON_COMPLIANT
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Decision must be 'approve' or 'reject'"
+        )
+    
+    shariah_result.reviewed_by = current_user.id
+    shariah_result.reviewed_at = datetime.now(timezone.utc)
+    shariah_result.review_notes = request.notes
+    shariah_result.review_decision = request.decision.lower()
+    shariah_result.requires_manual_review = False
+    
+    # Update escrow release condition
+    from app.models.escrow import Escrow
+    escrow_result = await db.execute(
+        select(Escrow).where(Escrow.order_id == order_id, Escrow.is_deleted == False)
+    )
+    escrow = escrow_result.scalar_one_or_none()
+    if escrow:
+        is_compliant = request.decision.lower() == "approve"
+        escrow.update_release_condition("shariah_compliant", is_compliant)
+    
+    await db.commit()
+    await db.refresh(shariah_result)
+    
+    logger.info(f"Manual Shariah review completed for order {order_id}: {request.decision}")
+    
+    return result_to_response(shariah_result)
+
+
+@router.post("/check-keywords", response_model=ProductKeywordCheckResponse)
+async def check_product_keywords(
+    request: ProductKeywordCheckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Check product name and description for haram keywords.
+    
+    Useful for quick validation before creating an order.
+    """
+    shariah_service = ShariahService(db)
+    
+    result = await shariah_service.check_product_keywords(
+        request.product_name,
+        request.description or ""
+    )
+    
+    # Determine risk level
+    keyword_count = len(result["found_keywords"])
+    if keyword_count == 0:
+        risk_level = "low"
+    elif keyword_count <= 2:
+        risk_level = "medium"
+    elif keyword_count <= 5:
+        risk_level = "high"
+    else:
+        risk_level = "critical"
+    
+    return ProductKeywordCheckResponse(
+        is_clean=result["is_clean"],
+        found_keywords=result["found_keywords"],
+        recommendation=result["recommendation"],
+        risk_level=risk_level,
+    )
+
+
+@router.get("/rules", response_model=ShariahRulesListResponse)
+async def get_shariah_rules(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get list of Shariah rules used for validation.
+    """
+    rules = [
+        ShariahRuleResponse(
+            code=rule["code"],
+            name=rule["name"],
+            description=rule["description"],
+            category=rule["category"],
+            severity=rule["severity"],
+            is_active=True,
+        )
+        for rule in DEFAULT_SHARIAH_RULES
+    ]
+    
+    return ShariahRulesListResponse(
+        rules=rules,
+        total=len(rules),
+    )

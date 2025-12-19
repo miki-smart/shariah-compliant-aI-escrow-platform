@@ -136,6 +136,75 @@ class OrderCancelledEvent(DomainEvent):
         }
 
 
+@dataclass
+class OrderApprovedEvent(DomainEvent):
+    """Emitted when order is approved (by bank or AI)"""
+    order_id: UUID = None
+    approved_by: UUID = None
+    approval_type: str = None  # 'bank', 'ai', 'shariah'
+    
+    @property
+    def event_type(self) -> str:
+        return "order.approved"
+    
+    @property
+    def priority(self) -> EventPriority:
+        return EventPriority.HIGH
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "approved_by": str(self.approved_by) if self.approved_by else None,
+            "approval_type": self.approval_type,
+        }
+
+
+@dataclass
+class OrderRejectedEvent(DomainEvent):
+    """Emitted when order is rejected"""
+    order_id: UUID = None
+    rejected_by: UUID = None
+    rejection_type: str = None  # 'bank', 'ai', 'shariah'
+    reason: str = None
+    
+    @property
+    def event_type(self) -> str:
+        return "order.rejected"
+    
+    @property
+    def priority(self) -> EventPriority:
+        return EventPriority.HIGH
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "rejected_by": str(self.rejected_by) if self.rejected_by else None,
+            "rejection_type": self.rejection_type,
+            "reason": self.reason,
+        }
+
+
+@dataclass
+class OrderCompletedEvent(DomainEvent):
+    """Emitted when order is completed"""
+    order_id: UUID = None
+    completed_at: datetime = None
+    
+    @property
+    def event_type(self) -> str:
+        return "order.completed"
+    
+    @property
+    def priority(self) -> EventPriority:
+        return EventPriority.NORMAL
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
 # ============== Shariah Events ==============
 
 @dataclass
@@ -368,6 +437,35 @@ class EscrowFrozenEvent(DomainEvent):
         }
 
 
+@dataclass
+class FundsTransferredEvent(DomainEvent):
+    """Emitted when funds are transferred"""
+    escrow_id: UUID = None
+    order_id: UUID = None
+    from_account: str = None
+    to_account: str = None
+    amount: float = 0.0
+    transfer_type: str = None  # 'release', 'refund', 'fee'
+    
+    @property
+    def event_type(self) -> str:
+        return "escrow.funds_transferred"
+    
+    @property
+    def priority(self) -> EventPriority:
+        return EventPriority.HIGH
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "escrow_id": str(self.escrow_id),
+            "order_id": str(self.order_id),
+            "from_account": self.from_account,
+            "to_account": self.to_account,
+            "amount": self.amount,
+            "transfer_type": self.transfer_type,
+        }
+
+
 # ============== Delivery Events ==============
 
 @dataclass
@@ -386,6 +484,50 @@ class DeliveryCreatedEvent(DomainEvent):
             "delivery_id": str(self.delivery_id),
             "order_id": str(self.order_id),
             "provider_id": str(self.provider_id) if self.provider_id else None,
+        }
+
+
+@dataclass
+class DeliveryInTransitEvent(DomainEvent):
+    """Emitted when delivery is in transit"""
+    delivery_id: UUID = None
+    order_id: UUID = None
+    tracking_number: str = None
+    
+    @property
+    def event_type(self) -> str:
+        return "delivery.in_transit"
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "delivery_id": str(self.delivery_id),
+            "order_id": str(self.order_id),
+            "tracking_number": self.tracking_number,
+        }
+
+
+@dataclass
+class DeliveryConfirmedEvent(DomainEvent):
+    """Emitted when delivery is confirmed"""
+    delivery_id: UUID = None
+    order_id: UUID = None
+    confirmed_by: UUID = None
+    confirmed_type: str = None  # 'buyer', 'provider', 'both'
+    
+    @property
+    def event_type(self) -> str:
+        return "delivery.confirmed"
+    
+    @property
+    def priority(self) -> EventPriority:
+        return EventPriority.HIGH
+    
+    def _get_data(self) -> Dict[str, Any]:
+        return {
+            "delivery_id": str(self.delivery_id),
+            "order_id": str(self.order_id),
+            "confirmed_by": str(self.confirmed_by) if self.confirmed_by else None,
+            "confirmed_type": self.confirmed_type,
         }
 
 

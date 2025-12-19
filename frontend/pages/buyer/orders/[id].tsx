@@ -3,25 +3,27 @@
  */
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useRouter } from 'next/router';
-import { useQuery } from 'react-query';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order } from '@/types';
+import { Order, OrderStatus as OrderStatusEnum, ReleaseGateResponse } from '@/types';
 import { OrderStatusTimeline } from '@/components/ui/OrderStatusTimeline';
 import { EscrowStatusCard } from '@/components/ui/EscrowStatusCard';
 import { AIScoreCard } from '@/components/ui/AIScoreCard';
 import { ShariahComplianceCard } from '@/components/ui/ShariahComplianceCard';
+import ReleaseConditionsCard from '@/components/ui/ReleaseConditionsCard';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
 export default function BuyerOrderDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const queryClient = useQueryClient();
   const [isConfirming, setIsConfirming] = useState(false);
 
-  const { data: order } = useQuery<Order>(
+  const { data: order, isLoading: orderLoading } = useQuery<Order>(
     ['order', id],
     () => apiClient.getOrder(id as string),
     { enabled: !!id }
@@ -41,19 +43,44 @@ export default function BuyerOrderDetails() {
 
   const { data: shariahResult } = useQuery(
     ['shariah-result', id],
-    () => apiClient.getShariahResult(id as string),
+    () => apiClient.getShariahStatus(id as string),
     { enabled: !!id }
   );
 
-  const canConfirmDelivery =
-    order?.status === OrderStatus.DELIVERED || order?.status === OrderStatus.DELIVERY_PENDING;
+  const { 
+    data: releaseConditions, 
+    isLoading: releaseLoading,
+    refetch: refetchConditions 
+  } = useQuery<ReleaseGateResponse>(
+    ['release-conditions', id],
+    () => apiClient.checkReleaseConditions(id as string),
+    { enabled: !!id }
+  );
+
+  const releaseMutation = useMutation(
+    () => apiClient.executeRelease(id as string),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['order', id]);
+        queryClient.invalidateQueries(['escrow', id]);
+        queryClient.invalidateQueries(['release-conditions', id]);
+        alert('Payment released successfully!');
+      },
+      onError: (error: any) => {
+        alert(error.response?.data?.detail?.message || 'Failed to release payment');
+      }
+    }
+  );
+
+  const canConfirmDelivery = order?.status === 'DELIVERED' || order?.status === 'DELIVERY_PENDING';
 
   const handleConfirmDelivery = async (confirmed: boolean) => {
     if (!id) return;
     setIsConfirming(true);
     try {
-      await apiClient.confirmDelivery(id as string, confirmed);
-      router.reload();
+      await apiClient.confirmDeliveryDelivery(id as string, { confirmed, notes: '' });
+      queryClient.invalidateQueries(['order', id]);
+      queryClient.invalidateQueries(['release-conditions', id]);
     } catch (error) {
       console.error('Failed to confirm delivery:', error);
     } finally {
@@ -61,10 +88,18 @@ export default function BuyerOrderDetails() {
     }
   };
 
-  if (!order) {
+  const handleReleaseClick = () => {
+    if (confirm('Are you sure you want to release the payment? This action cannot be undone.')) {
+      releaseMutation.mutate();
+    }
+  };
+
+  if (orderLoading || !order) {
     return (
       <DashboardLayout role="BUYER">
-        <div className="text-center py-12">Loading order details...</div>
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
       </DashboardLayout>
     );
   }
@@ -147,12 +182,32 @@ export default function BuyerOrderDetails() {
 
         {/* Compliance & Risk Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {shariahResult && <ShariahComplianceCard result={shariahResult} />}
+          {shariahResult && <ShariahComplianceCard orderId={id as string} />}
           {aiDecision && <AIScoreCard decision={aiDecision} />}
         </div>
 
         {/* Escrow Status */}
-        {escrow && <EscrowStatusCard escrow={escrow} />}
+        {escrow && <EscrowStatusCard orderId={id as string} />}
+
+        {/* Release Conditions */}
+        {releaseConditions && (
+          <ReleaseConditionsCard
+            orderId={id as string}
+            conditions={releaseConditions.conditions}
+            canRelease={releaseConditions.can_release}
+            allConditionsMet={releaseConditions.all_conditions_met}
+            escrowAmount={releaseConditions.escrow_amount}
+            currency={releaseConditions.currency}
+            escrowStatus={releaseConditions.escrow_status}
+            blockingReasons={releaseConditions.blocking_reasons}
+            onReleaseClick={handleReleaseClick}
+            onRefresh={() => refetchConditions()}
+            isLoading={releaseLoading}
+            isReleasing={releaseMutation.isLoading}
+            showReleaseButton={true}
+            userRole="BUYER"
+          />
+        )}
       </div>
     </DashboardLayout>
   );

@@ -69,6 +69,7 @@ export function getEscrowStateConfig(state: EscrowState) {
     [EscrowState.RELEASED]: { label: 'Released', color: 'text-green-600', bgColor: 'bg-green-100' },
     [EscrowState.REVERTED]: { label: 'Reverted', color: 'text-red-600', bgColor: 'bg-red-100' },
     [EscrowState.FROZEN]: { label: 'Frozen', color: 'text-amber-600', bgColor: 'bg-amber-100' },
+    [EscrowState.PARTIALLY_RELEASED]: { label: 'Partially Released', color: 'text-orange-600', bgColor: 'bg-orange-100' },
   };
   return configs[state] || configs[EscrowState.PENDING];
 }

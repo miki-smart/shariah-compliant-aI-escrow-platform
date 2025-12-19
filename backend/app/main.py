@@ -126,8 +126,14 @@ def create_application() -> FastAPI:
         return {"status": "ready"}
     
     # Register API routers
-    # from app.api.v1 import router as api_v1_router
-    # app.include_router(api_v1_router, prefix=settings.API_V1_PREFIX)
+    from app.api.v1.escrow import router as escrow_router
+    from app.api.v1.shariah import router as shariah_router
+    from app.api.v1.release import router as release_router
+    from app.api.v1.audit import router as audit_router
+    app.include_router(escrow_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(shariah_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(release_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(audit_router, prefix=settings.API_V1_PREFIX)
     
     logger.info(f"Application created: {settings.APP_NAME}")
     return app

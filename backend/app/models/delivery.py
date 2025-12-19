@@ -49,6 +49,27 @@ class DeliveryIssueType(str, enum.Enum):
     OTHER = "other"
 
 
+class DeliveryEventType(str, enum.Enum):
+    """Types of delivery events for tracking"""
+    CREATED = "created"
+    PICKED_UP = "picked_up"
+    IN_TRANSIT = "in_transit"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
+    DELIVERY_FAILED = "delivery_failed"
+    RETURNED = "returned"
+    LOCATION_UPDATE = "location_update"
+    NOTE_ADDED = "note_added"
+
+
+class ConfirmedBy(str, enum.Enum):
+    """Who confirmed the delivery"""
+    BUYER = "buyer"
+    PROVIDER = "provider"
+    SELLER = "seller"
+    SYSTEM = "system"
+
+
 class Delivery(BaseModel, AuditMixin):
     """
     Delivery tracking for an order.
