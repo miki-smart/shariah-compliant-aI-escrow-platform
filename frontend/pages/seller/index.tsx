@@ -2,31 +2,75 @@
  * Seller Dashboard - Overview of products and orders
  * Updated to match emerald/teal auth design
  */
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, StatCard } from '@/components/ui/Card';
 import { useQuery } from 'react-query';
 import { apiClient } from '@/lib/api-client';
-import { Order, ProductListResponse } from '@/types';
+import { useAuth } from '@/lib/auth-context';
+import { OrderListResponse, ProductListResponse } from '@/types';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { Package, FileText, Plus, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
 
 export default function SellerDashboard() {
-  const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>(
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
+  const { data: ordersData, isLoading: ordersLoading } = useQuery<OrderListResponse>(
     'seller-orders',
-    () => apiClient.getOrders({ limit: 5 })
+    () => apiClient.getOrders({ limit: 5 }),
+    { enabled: !!user && !authLoading }
   );
 
   const { data: productsData } = useQuery<ProductListResponse>(
     'seller-products',
-    () => apiClient.getMyProducts({ page: 1, page_size: 10 })
+    () => apiClient.getMyProducts({ page: 1, page_size: 10 }),
+    { enabled: !!user && !authLoading }
   );
 
+  // Handle authentication and authorization
+  useEffect(() => {
+    if (authLoading) return;
+    
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    
+    const userRole = user.role || (user as any).roles?.[0];
+    if (userRole && userRole !== 'seller') {
+      const dashboardRoutes: Record<string, string> = {
+        buyer: '/buyer',
+        bank: '/bank',
+        delivery_provider: '/delivery',
+        admin: '/admin',
+      };
+      router.push(dashboardRoutes[userRole] || '/');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading state while checking auth
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  const userRole = user.role || (user as any).roles?.[0];
+  if (userRole !== 'seller') {
+    return null;
+  }
+
+  const orders = ordersData?.orders || [];
   const products = productsData?.products || [];
-  const pendingOrders = orders?.filter((o) => o.status === 'BANK_PENDING' || o.status === 'ESCROW_LOCKED') || [];
+  const pendingOrders = orders.filter((o) => o.status === 'BANK_PENDING' || o.status === 'ESCROW_LOCKED');
   const activeProducts = products.filter((p) => p.is_active);
-  const totalRevenue = orders?.filter((o) => o.status === 'ESCROW_RELEASED')
-    .reduce((sum, o) => sum + o.total_amount, 0) || 0;
+  const totalRevenue = orders.filter((o) => o.status === 'ESCROW_RELEASED')
+    .reduce((sum, o) => sum + o.total_amount, 0);
 
   return (
     <DashboardLayout role="SELLER">

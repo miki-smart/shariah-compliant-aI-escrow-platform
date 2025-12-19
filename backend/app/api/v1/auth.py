@@ -61,7 +61,7 @@ async def get_current_user(
 async def require_auth(
     current_user: Optional[dict] = Depends(get_current_user),
 ) -> dict:
-    """Require authentication"""
+    """Require authentication - returns JWT payload dict"""
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -69,6 +69,46 @@ async def require_auth(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return current_user
+
+
+async def require_auth_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    """Require authentication - returns User model"""
+    from app.models.user import User
+    from sqlalchemy import select
+    
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = credentials.credentials
+    payload = AuthService.verify_access_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Get user from database
+    user_id = UUID(payload["sub"])
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
 
 
 async def get_current_user_model(

@@ -31,7 +31,8 @@ export function ProtectedRoute({
 
       // Check role-based access
       if (allowedRoles && user) {
-        const userRole = user.roles?.[0];
+        // Support both user.role (backend) and user.roles (legacy)
+        const userRole = user.role || user.roles?.[0];
         if (userRole && !allowedRoles.includes(userRole)) {
           // Redirect to user's appropriate dashboard
           const dashboardRoutes: Record<string, string> = {
@@ -72,7 +73,7 @@ export function ProtectedRoute({
 
   // Role not allowed
   if (allowedRoles && user) {
-    const userRole = user.roles?.[0];
+    const userRole = user.role || user.roles?.[0];
     if (userRole && !allowedRoles.includes(userRole)) {
       return null;
     }
@@ -101,7 +102,8 @@ export function GuestRoute({
     if (!isLoading && isAuthenticated && user) {
       // Redirect authenticated users to their dashboard
       const destination = redirectTo || (() => {
-        const userRole = user.roles?.[0];
+        // Support both user.role (backend) and user.roles (legacy)
+        const userRole = user.role || user.roles?.[0];
         const dashboardRoutes: Record<string, string> = {
           buyer: '/buyer',
           seller: '/seller',

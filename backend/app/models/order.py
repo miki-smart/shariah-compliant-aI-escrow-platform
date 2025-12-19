@@ -2,7 +2,7 @@
 Order Model
 Trade orders with state machine for lifecycle management
 """
-from sqlalchemy import Column, String, Text, Numeric, Boolean, Index, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Text, Numeric, Boolean, Index, ForeignKey, CheckConstraint, DateTime
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
@@ -226,21 +226,21 @@ class Order(BaseModel, AuditMixin, VersionedMixin):
     # Delivery info
     delivery_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     delivery_terms: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    expected_delivery_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    actual_delivery_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    expected_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    actual_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Confirmation timestamps
-    buyer_confirmed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    seller_confirmed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    provider_confirmed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    buyer_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    seller_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Key timestamps
-    shariah_validated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    ai_evaluated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    bank_approved_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    escrow_locked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    escrow_released_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    settled_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    shariah_validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_evaluated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    bank_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    escrow_locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    escrow_released_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

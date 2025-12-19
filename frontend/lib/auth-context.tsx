@@ -389,10 +389,18 @@ export function withAuth<P extends object>(
       }
 
       if (!isLoading && isAuthenticated && allowedRoles && user) {
-        const userRole = user.roles?.[0];
+        // Support both user.role (backend) and user.roles (legacy)
+        const userRole = user.role || user.roles?.[0];
         if (userRole && !allowedRoles.includes(userRole)) {
           // Redirect to appropriate dashboard
-          router.replace(`/${userRole}`);
+          const dashboardRoutes: Record<string, string> = {
+            buyer: '/buyer',
+            seller: '/seller',
+            bank: '/bank',
+            delivery_provider: '/delivery',
+            admin: '/admin',
+          };
+          router.replace(dashboardRoutes[userRole] || '/buyer');
         }
       }
     }, [isLoading, isAuthenticated, user, router]);
