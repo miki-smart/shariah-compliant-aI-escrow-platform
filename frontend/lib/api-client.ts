@@ -5,6 +5,12 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
   Order,
   OrderCreate,
+  OrderListResponse,
+  BankApprovalRequest,
+  DeliveryConfirmationRequest,
+  SellerProcessRequest,
+  CancelOrderRequest,
+  OrderStatusHistory,
   Product,
   ProductCreate,
   ProductUpdate,
@@ -157,8 +163,31 @@ class ApiClient {
   }
 
   // ============ ORDERS ============
-  async getOrders(params?: { skip?: number; limit?: number }): Promise<Order[]> {
+  async getOrders(params?: { 
+    status?: string; 
+    financing_requested?: boolean;
+    skip?: number; 
+    limit?: number;
+  }): Promise<OrderListResponse> {
     const response = await this.client.get('/orders', { params });
+    return response.data;
+  }
+
+  async getMyOrders(params?: {
+    role_filter?: 'buyer' | 'seller';
+    status?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<OrderListResponse> {
+    const response = await this.client.get('/orders/my-orders', { params });
+    return response.data;
+  }
+
+  async getPendingApprovalOrders(params?: {
+    skip?: number;
+    limit?: number;
+  }): Promise<OrderListResponse> {
+    const response = await this.client.get('/orders/pending-approval', { params });
     return response.data;
   }
 
@@ -167,27 +196,38 @@ class ApiClient {
     return response.data;
   }
 
+  async getOrderHistory(orderId: string): Promise<OrderStatusHistory[]> {
+    const response = await this.client.get(`/orders/${orderId}/history`);
+    return response.data;
+  }
+
   async createOrder(data: OrderCreate): Promise<Order> {
     const response = await this.client.post('/orders', data);
     return response.data;
   }
 
-  async bankApproveOrder(orderId: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/bank-approve`);
+  async bankApproveOrder(orderId: string, data?: BankApprovalRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/bank-approve`, data || { approved: true });
     return response.data;
   }
 
-  async bankRejectOrder(orderId: string, reason?: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/bank-reject`, null, {
-      params: { reason },
-    });
+  async bankRejectOrder(orderId: string, data: BankApprovalRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/bank-reject`, data);
     return response.data;
   }
 
-  async confirmDelivery(orderId: string, confirmed: boolean, notes?: string): Promise<Order> {
-    const response = await this.client.post(`/orders/${orderId}/confirm-delivery`, null, {
-      params: { confirmed, notes },
-    });
+  async sellerProcessOrder(orderId: string, data: SellerProcessRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/seller-process`, data);
+    return response.data;
+  }
+
+  async confirmDelivery(orderId: string, data: DeliveryConfirmationRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/confirm-delivery`, data);
+    return response.data;
+  }
+
+  async cancelOrder(orderId: string, data: CancelOrderRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/cancel`, data);
     return response.data;
   }
 
