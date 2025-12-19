@@ -48,24 +48,146 @@ export interface Order {
 }
 
 // Product Types
+export enum ProductCategory {
+  FOOD_BEVERAGE = 'food_beverage',
+  ELECTRONICS = 'electronics',
+  CLOTHING_TEXTILE = 'clothing_textile',
+  AGRICULTURE = 'agriculture',
+  MANUFACTURING = 'manufacturing',
+  RAW_MATERIALS = 'raw_materials',
+  SERVICES = 'services',
+  COSMETICS = 'cosmetics',
+  PHARMACEUTICALS = 'pharmaceuticals',
+  OTHER = 'other',
+}
+
+export enum ShariahCategory {
+  HALAL = 'halal',
+  HARAM = 'haram',
+  MASHBOOH = 'mashbooh',
+  PENDING_REVIEW = 'pending_review',
+}
+
+export enum ProductStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  OUT_OF_STOCK = 'out_of_stock',
+  PENDING_APPROVAL = 'pending_approval',
+  REJECTED = 'rejected',
+}
+
 export interface ProductCreate {
   name: string;
   description?: string;
-  category: string;
-  price: string;
+  sku?: string;
+  category: ProductCategory;
+  subcategory?: string;
+  price: number;
+  currency?: string;
+  min_order_quantity?: number;
+  max_order_quantity?: number;
+  stock_quantity?: number;
+  unit?: string;
+  images?: string[];
+  thumbnail_url?: string;
+  weight_kg?: number;
+  dimensions?: { length?: number; width?: number; height?: number; unit?: string };
+  shipping_class?: string;
+  estimated_delivery_days?: number;
+  halal_certification?: string;
+  certification_expiry?: string;
+  certification_body?: string;
+  tags?: string[];
+  attributes?: Record<string, any>;
+}
+
+export interface ProductUpdate extends Partial<ProductCreate> {
+  is_active?: boolean;
+}
+
+export interface SellerInfo {
+  id: string;
+  business_name?: string;
+  username: string;
+  city?: string;
+  country?: string;
+  seller_trust_score?: number;
 }
 
 export interface Product {
   id: string;
+  seller_id: string;
   name: string;
   description?: string;
-  category: string;
-  halal_status?: 'PENDING' | 'HALAL' | 'HARAM';
-  seller_id: string;
-  price: string;
+  sku?: string;
+  category: ProductCategory;
+  subcategory?: string;
+  shariah_category: ShariahCategory;
+  shariah_notes?: string;
+  is_halal: boolean;
+  is_haram: boolean;
+  requires_shariah_review: boolean;
+  price: number;
+  currency: string;
+  min_order_quantity: number;
+  max_order_quantity?: number;
+  stock_quantity: number;
+  unit: string;
+  is_available: boolean;
+  status: ProductStatus;
   is_active: boolean;
+  images?: string[];
+  thumbnail_url?: string;
+  weight_kg?: number;
+  dimensions?: { length?: number; width?: number; height?: number; unit?: string };
+  shipping_class?: string;
+  estimated_delivery_days: number;
+  halal_certification?: string;
+  certification_expiry?: string;
+  certification_body?: string;
+  tags?: string[];
+  attributes?: Record<string, any>;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+  seller?: SellerInfo;
+}
+
+export interface ProductListResponse {
+  products: Product[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface ShariahValidationResult {
+  product_id: string;
+  shariah_category: ShariahCategory;
+  is_compliant: boolean;
+  confidence_score: number;
+  haram_indicators?: Array<{
+    keyword: string;
+    category: string;
+    severity: string;
+    location: string;
+  }>;
+  warnings?: string[];
+  requires_manual_review: boolean;
+  review_reason?: string;
+  validated_at: string;
+  validation_method: string;
+}
+
+export interface ProductFilters {
+  category?: ProductCategory;
+  shariah_category?: ShariahCategory;
+  status?: ProductStatus;
+  is_active?: boolean;
+  min_price?: number;
+  max_price?: number;
+  in_stock?: boolean;
+  seller_id?: string;
+  search?: string;
 }
 
 // Escrow Types

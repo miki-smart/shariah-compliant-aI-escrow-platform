@@ -55,7 +55,7 @@ export default function BankDashboard() {
           />
           <StatCard
             title="Total Volume"
-            value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalVolume)}
+            value={`ETB ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(totalVolume)}`}
             icon={<DollarSign className="w-6 h-6 text-emerald-600" />}
             trend={{ value: 23, positive: true }}
           />
