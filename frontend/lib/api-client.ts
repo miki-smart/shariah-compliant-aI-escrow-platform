@@ -9,6 +9,7 @@ import type {
   BankApprovalRequest,
   DeliveryConfirmationRequest,
   SellerProcessRequest,
+  DeliveryAssignmentRequest,
   CancelOrderRequest,
   OrderStatusHistory,
   Product,
@@ -253,6 +254,16 @@ class ApiClient {
 
   async sellerProcessOrder(orderId: string, data: SellerProcessRequest): Promise<Order> {
     const response = await this.client.post(`/orders/${orderId}/seller-process`, data);
+    return response.data;
+  }
+
+  async listDeliveryProviders(): Promise<UserSummary[]> {
+    const response = await this.client.get('/orders/delivery-providers');
+    return response.data;
+  }
+
+  async assignDeliveryProvider(orderId: string, data: DeliveryAssignmentRequest): Promise<Order> {
+    const response = await this.client.post(`/orders/${orderId}/assign-delivery`, data);
     return response.data;
   }
 
@@ -543,8 +554,13 @@ class ApiClient {
   }
 
   // Legacy delivery methods (kept for backward compatibility)
-  async getDelivery(orderId: string): Promise<Delivery> {
-    const response = await this.client.get(`/delivery/${orderId}`);
+  async getDelivery(deliveryId: string): Promise<Delivery> {
+    const response = await this.client.get(`/delivery/${deliveryId}`);
+    return response.data;
+  }
+
+  async getDeliveryByOrderId(orderId: string): Promise<Delivery> {
+    const response = await this.client.get(`/delivery/order/${orderId}`);
     return response.data;
   }
 

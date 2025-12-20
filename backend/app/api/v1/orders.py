@@ -4,7 +4,8 @@ Handles order creation, management, and lifecycle operations
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, case
+from sqlalchemy.sql import case as sql_case
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from uuid import UUID
@@ -14,7 +15,7 @@ import uuid as uuid_module
 
 from app.core.database import get_db
 from app.api.v1.auth import require_auth, require_auth_user, require_role
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.models.order import (
     Order,
     OrderStatus as OrderStatusModel,
@@ -33,6 +34,7 @@ from app.schemas.order import (
     BankApprovalRequest,
     DeliveryConfirmationRequest,
     SellerProcessRequest,
+    DeliveryAssignmentRequest,
     CancelOrderRequest,
     OrderStatusHistoryResponse,
     UserSummary,
@@ -547,6 +549,67 @@ async def get_pending_approval_orders(
     )
 
 
+# ============ Delivery Assignment ============
+# NOTE: This route must be defined BEFORE /{order_id} routes to avoid route conflicts
+
+@router.get(
+    "/delivery-providers",
+    response_model=List[UserSummary],
+    summary="List delivery providers",
+    description="Get list of available delivery providers for sellers to assign"
+)
+async def list_delivery_providers(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.SELLER, UserRole.ADMIN]))
+):
+    """List all available delivery providers."""
+    # First, check all delivery providers regardless of status for debugging
+    all_providers_result = await db.execute(
+        select(User).where(
+            and_(
+                User.role == UserRole.DELIVERY_PROVIDER,
+                User.is_deleted == False
+            )
+        )
+    )
+    all_providers = all_providers_result.scalars().all()
+    logger.info(f"Found {len(all_providers)} total delivery providers (any status)")
+    for p in all_providers:
+        logger.info(f"  - {p.email} (Status: {p.status.value}, Role: {p.role.value})")
+    
+    # Get all delivery providers (excluding only SUSPENDED and deleted)
+    result = await db.execute(
+        select(User).where(
+            and_(
+                User.role == UserRole.DELIVERY_PROVIDER,
+                User.status != UserStatus.SUSPENDED,  # Only exclude suspended
+                User.is_deleted == False
+            )
+        ).order_by(
+            # Order by status: ACTIVE first, then others
+            sql_case(
+                (User.status == UserStatus.ACTIVE, 1),
+                else_=2
+            ),
+            User.first_name.asc(),
+            User.last_name.asc()
+        )
+    )
+    providers = result.scalars().all()
+    logger.info(f"Returning {len(providers)} delivery providers (excluding suspended)")
+    
+    return [
+        UserSummary(
+            id=str(p.id),
+            email=p.email,
+            full_name=p.full_name or p.email or p.username,
+            business_name=p.business_name,
+            phone=p.phone_number
+        )
+        for p in providers
+    ]
+
+
 @router.get(
     "/{order_id}",
     response_model=OrderResponse,
@@ -676,7 +739,16 @@ async def bank_approve_order(
     db.add(fund_history)
     
     await db.commit()
-    await db.refresh(order)
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
     
     logger.info(f"Order {order.order_number} approved by bank {current_user.email}")
     
@@ -736,7 +808,16 @@ async def bank_reject_order(
     db.add(history)
     
     await db.commit()
-    await db.refresh(order)
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
     
     logger.info(f"Order {order.order_number} rejected by bank {current_user.email}")
     
@@ -854,9 +935,206 @@ async def seller_process_order(
         db.add(history)
     
     await db.commit()
-    await db.refresh(order)
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
     
     logger.info(f"Order {order.order_number} {request.action}ed by seller {current_user.email}")
+    
+    return to_order_response(order)
+
+
+@router.post(
+    "/{order_id}/assign-delivery",
+    response_model=OrderResponse,
+    summary="Assign delivery provider",
+    description="Seller assigns a delivery provider to an order"
+)
+async def assign_delivery_provider(
+    order_id: UUID,
+    request: DeliveryAssignmentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.SELLER, UserRole.ADMIN]))
+):
+    """Seller assigns a delivery provider to an order."""
+    from app.services.delivery_service import DeliveryService
+    from app.models.delivery import Delivery
+    
+    # Get order
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(
+            and_(Order.id == order_id, Order.is_deleted == False)
+        )
+    )
+    order = result.scalar_one_or_none()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Verify seller owns this order
+    if order.seller_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not the seller for this order"
+        )
+    
+    # Check order status
+    if order.status != OrderStatusModel.PROCESSING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order must be in PROCESSING status to assign delivery"
+        )
+    
+    # Check if delivery already exists
+    delivery_result = await db.execute(
+        select(Delivery).where(Delivery.order_id == order_id)
+    )
+    existing_delivery = delivery_result.scalar_one_or_none()
+    
+    if existing_delivery:
+        # If delivery exists but order.delivery_id is not set, update it
+        if order.delivery_id != existing_delivery.id:
+            order.delivery_id = existing_delivery.id
+            await db.commit()
+            logger.info(f"Updated order {order.order_number} with existing delivery {existing_delivery.id}")
+        
+        # Get provider info for better error message
+        provider_info = "Unknown"
+        if existing_delivery.provider_id:
+            provider_check = await db.execute(
+                select(User).where(User.id == existing_delivery.provider_id)
+            )
+            provider_user = provider_check.scalar_one_or_none()
+            if provider_user:
+                provider_info = provider_user.full_name or provider_user.email
+        
+        # Return the existing delivery info
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Delivery already assigned to this order. Provider: {provider_info}"
+        )
+    
+    # Verify provider exists and is a delivery provider
+    # Allow all statuses except SUSPENDED (matching the list endpoint)
+    logger.info(f"Looking for delivery provider: id={request.provider_id}")
+    provider_result = await db.execute(
+        select(User).where(
+            and_(
+                User.id == request.provider_id,
+                User.role == UserRole.DELIVERY_PROVIDER,
+                User.status != UserStatus.SUSPENDED,  # Only exclude suspended
+                User.is_deleted == False
+            )
+        )
+    )
+    provider = provider_result.scalar_one_or_none()
+    
+    if not provider:
+        # Log for debugging - check if user exists at all
+        user_check = await db.execute(
+            select(User).where(User.id == request.provider_id)
+        )
+        user = user_check.scalar_one_or_none()
+        if user:
+            logger.warning(
+                f"User found but doesn't match delivery provider criteria: "
+                f"id={user.id}, email={user.email}, "
+                f"role={user.role.value if user.role else None}, "
+                f"status={user.status.value if user.status else None}, "
+                f"deleted={user.is_deleted}"
+            )
+            # Provide more specific error message
+            if user.role != UserRole.DELIVERY_PROVIDER:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"User is not a delivery provider (role: {user.role.value if user.role else 'unknown'})"
+                )
+            elif user.status == UserStatus.SUSPENDED:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Delivery provider account is suspended"
+                )
+            elif user.is_deleted:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Delivery provider account has been deleted"
+                )
+        else:
+            logger.warning(f"User not found with id: {request.provider_id}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Delivery provider not found"
+        )
+    
+    logger.info(f"Found delivery provider: {provider.email} (status: {provider.status.value})")
+    
+    # Get addresses from order
+    pickup_address = {
+        "name": order.seller.full_name if order.seller else "Seller",
+        "address": order.seller.address_line_1 if order.seller and order.seller.address_line_1 else "",
+        "city": order.seller.city if order.seller and order.seller.city else "",
+        "phone": order.seller.phone_number if order.seller and order.seller.phone_number else "",
+    }
+    
+    delivery_address = order.delivery_address or {}
+    
+    # Create delivery
+    service = DeliveryService(db)
+    delivery = await service.create_delivery(
+        order_id=order_id,
+        provider_id=request.provider_id,
+        pickup_address=pickup_address,
+        delivery_address=delivery_address,
+        estimated_delivery=request.estimated_delivery_date,
+        special_instructions=request.special_instructions,
+        metadata={
+            "assigned_by": str(current_user.id),
+            "assigned_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    
+    # Update order to link delivery
+    order.delivery_id = delivery.id
+    
+    # Add status history
+    history = OrderStatusHistory(
+        order_id=order.id,
+        from_status=OrderStatusModel.PROCESSING.value,
+        to_status=OrderStatusModel.PROCESSING.value,  # Status stays PROCESSING until shipped
+        changed_by=current_user.id,
+        reason=f"Delivery assigned to {provider.full_name or provider.email}",
+        trigger_type="user",
+    )
+    db.add(history)
+    
+    await db.commit()
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
+    
+    logger.info(f"Delivery {delivery.id} assigned to order {order.order_number} by seller {current_user.email}")
     
     return to_order_response(order)
 
@@ -972,7 +1250,16 @@ async def confirm_delivery(
         db.add(history)
     
     await db.commit()
-    await db.refresh(order)
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
     
     logger.info(f"Order {order.order_number} delivery {'confirmed' if request.confirmed else 'disputed'} by buyer {current_user.email}")
     
@@ -1047,7 +1334,16 @@ async def cancel_order(
     db.add(history)
     
     await db.commit()
-    await db.refresh(order)
+    
+    # Re-query order with relationships to avoid lazy loading issues
+    result = await db.execute(
+        select(Order).options(
+            selectinload(Order.buyer),
+            selectinload(Order.seller),
+            selectinload(Order.product)
+        ).where(Order.id == order_id)
+    )
+    order = result.scalar_one()
     
     logger.info(f"Order {order.order_number} cancelled by {current_user.email}")
     

@@ -70,7 +70,10 @@ export default function SellerDashboard() {
   const pendingOrders = orders.filter((o) => o.status === 'BANK_PENDING' || o.status === 'ESCROW_LOCKED');
   const activeProducts = products.filter((p) => p.is_active);
   const totalRevenue = orders.filter((o) => o.status === 'ESCROW_RELEASED')
-    .reduce((sum, o) => sum + o.total_amount, 0);
+    .reduce((sum, o) => {
+      const amount = Number(o.total_amount) || 0;
+      return sum + amount;
+    }, 0);
 
   return (
     <DashboardLayout role="SELLER">

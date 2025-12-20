@@ -80,15 +80,25 @@ class DeliveryService:
         metadata: Optional[dict] = None,
     ) -> Delivery:
         """Create delivery record for an order"""
+        # Convert timezone-aware datetime to timezone-naive if needed
+        # (Delivery model uses TIMESTAMP WITHOUT TIME ZONE)
+        estimated_delivery_naive = None
+        if estimated_delivery:
+            if estimated_delivery.tzinfo is not None:
+                # Convert to UTC and remove timezone info
+                estimated_delivery_naive = estimated_delivery.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                estimated_delivery_naive = estimated_delivery
+        
         delivery = Delivery(
             order_id=order_id,
             provider_id=provider_id,
             status=DeliveryStatus.PENDING,
             pickup_address=pickup_address,
             delivery_address=delivery_address,
-            estimated_delivery=estimated_delivery,
-            special_instructions=special_instructions,
-            metadata=metadata or {},
+            estimated_delivery_date=estimated_delivery_naive,
+            delivery_instructions=special_instructions,
+            delivery_metadata=metadata or {},
         )
         
         self.db.add(delivery)
@@ -98,7 +108,7 @@ class DeliveryService:
         # Add initial tracking event
         await self._add_tracking_event(
             delivery_id=delivery.id,
-            event_type=DeliveryEventType.ORDER_PLACED,
+            event_type=DeliveryEventType.CREATED,
             description="Delivery order created",
         )
         
@@ -124,12 +134,13 @@ class DeliveryService:
         if not delivery:
             return False, "Delivery not found"
         
-        delivery.status = DeliveryStatus.ASSIGNED
+        # Status remains PENDING until pickup starts - provider_id assignment is the "assignment"
+        # No need to change status here as PENDING with provider_id means it's assigned
         await self.db.commit()
         
         await self._add_tracking_event(
             delivery_id=delivery_id,
-            event_type=DeliveryEventType.ASSIGNED,
+            event_type=DeliveryEventType.NOTE_ADDED,
             description="Delivery assigned for pickup",
             metadata=driver_info,
         )

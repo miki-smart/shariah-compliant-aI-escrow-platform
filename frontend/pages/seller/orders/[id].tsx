@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api-client';
-import { Order, OrderStatus, OrderStatusHistory, SellerProcessRequest } from '@/types';
+import { Order, OrderStatus, OrderStatusHistory, SellerProcessRequest, DeliveryAssignmentRequest, UserSummary } from '@/types';
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; icon: React.ElementType; description: string }> = {
   [OrderStatus.CREATED]: { label: 'New Order', color: 'text-blue-600', bg: 'bg-blue-50', icon: Package, description: 'New order awaiting validation' },
@@ -67,10 +67,13 @@ export default function SellerOrderDetailPage() {
   const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showShipModal, setShowShipModal] = useState(false);
+  const [showAssignDeliveryModal, setShowAssignDeliveryModal] = useState(false);
   const [estimatedDelivery, setEstimatedDelivery] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [deliveryInstructions, setDeliveryInstructions] = useState('');
 
   const { data: order, isLoading, error } = useQuery<Order>(
     ['order', id],
@@ -84,11 +87,26 @@ export default function SellerOrderDetailPage() {
     { enabled: !!id && showHistory }
   );
 
-  // Get delivery info if order has delivery
+  // Get delivery info - check by order_id even if delivery_id is not set on order
   const { data: delivery } = useQuery(
-    ['order-delivery', order?.delivery_id],
-    () => apiClient.getDeliveryById(order!.delivery_id!),
-    { enabled: !!order?.delivery_id }
+    ['order-delivery', order?.id, order?.delivery_id],
+    async () => {
+      if (order?.delivery_id) {
+        return apiClient.getDeliveryById(order.delivery_id);
+      } else if (order?.id) {
+        // Try to get delivery by order_id in case delivery exists but order.delivery_id wasn't set
+        try {
+          return await apiClient.getDeliveryByOrderId(order.id);
+        } catch (error: any) {
+          if (error?.response?.status === 404) {
+            return null; // No delivery found
+          }
+          throw error;
+        }
+      }
+      return null;
+    },
+    { enabled: !!order?.id }
   );
 
   // Get verification status
@@ -97,6 +115,23 @@ export default function SellerOrderDetailPage() {
     () => apiClient.getVerificationStatus(order!.delivery_id!),
     { enabled: !!order?.delivery_id }
   );
+
+  // Get delivery providers
+  const { data: deliveryProviders, isLoading: loadingProviders, error: providersError } = useQuery<UserSummary[]>(
+    ['delivery-providers'],
+    () => apiClient.listDeliveryProviders(),
+    { 
+      enabled: showAssignDeliveryModal,
+      onSuccess: (data) => {
+        console.log('Delivery providers loaded:', data);
+      },
+      onError: (error) => {
+        console.error('Error loading delivery providers:', error);
+      }
+    }
+  );
+
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const processOrderMutation = useMutation(
     (data: SellerProcessRequest) => apiClient.sellerProcessOrder(id as string, data),
@@ -107,6 +142,12 @@ export default function SellerOrderDetailPage() {
         setShowAcceptModal(false);
         setShowRejectModal(false);
         setShowShipModal(false);
+        setErrorMessage(null);
+      },
+      onError: (error: any) => {
+        console.error('Error processing order:', error);
+        const message = error?.response?.data?.detail || error?.message || 'Failed to process order. Please try again.';
+        setErrorMessage(message);
       },
     }
   );
@@ -123,10 +164,15 @@ export default function SellerOrderDetailPage() {
   );
 
   const handleAcceptOrder = () => {
-    processOrderMutation.mutate({
+    const payload: SellerProcessRequest = {
       action: 'accept',
-      estimated_delivery_date: estimatedDelivery ? new Date(estimatedDelivery).toISOString() : undefined,
-    });
+    };
+    
+    if (estimatedDelivery) {
+      payload.estimated_delivery_date = new Date(estimatedDelivery).toISOString();
+    }
+    
+    processOrderMutation.mutate(payload);
   };
 
   const handleRejectOrder = () => {
@@ -142,6 +188,47 @@ export default function SellerOrderDetailPage() {
       tracking_number: trackingNumber || undefined,
       estimated_delivery_date: estimatedDelivery ? new Date(estimatedDelivery).toISOString() : undefined,
     });
+  };
+
+  const assignDeliveryMutation = useMutation(
+    (data: DeliveryAssignmentRequest) => apiClient.assignDeliveryProvider(id as string, data),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['order', id]);
+        queryClient.invalidateQueries(['seller-orders']);
+        setShowAssignDeliveryModal(false);
+        setSelectedProviderId('');
+        setDeliveryInstructions('');
+        setEstimatedDelivery('');
+        setErrorMessage(null);
+      },
+      onError: (error: any) => {
+        console.error('Error assigning delivery:', error);
+        const message = error?.response?.data?.detail || error?.message || 'Failed to assign delivery provider. Please try again.';
+        setErrorMessage(message);
+      },
+    }
+  );
+
+  const handleAssignDelivery = () => {
+    if (!selectedProviderId) {
+      setErrorMessage('Please select a delivery provider');
+      return;
+    }
+
+    const payload: DeliveryAssignmentRequest = {
+      provider_id: selectedProviderId,
+    };
+
+    if (estimatedDelivery) {
+      payload.estimated_delivery_date = new Date(estimatedDelivery).toISOString();
+    }
+
+    if (deliveryInstructions) {
+      payload.special_instructions = deliveryInstructions;
+    }
+
+    assignDeliveryMutation.mutate(payload);
   };
 
   const getStatusConfig = (status: string) => {
@@ -176,6 +263,7 @@ export default function SellerOrderDetailPage() {
   const canAccept = order.status === OrderStatus.FUNDED;
   const canShip = order.status === OrderStatus.PROCESSING;
   const canReject = order.status === OrderStatus.FUNDED || order.status === OrderStatus.PROCESSING;
+  const canAssignDelivery = order.status === OrderStatus.PROCESSING && !order.delivery_id && !delivery;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50">
@@ -228,9 +316,28 @@ export default function SellerOrderDetailPage() {
                 </div>
               </div>
 
+              {/* Error Message */}
+              {errorMessage && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-red-800 font-medium">Error</p>
+                      <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
+                    </div>
+                    <button
+                      onClick={() => setErrorMessage(null)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              {(canAccept || canShip || canReject) && (
-                <div className="mt-6 flex gap-3">
+              {(canAccept || canShip || canReject || canAssignDelivery) && (
+                <div className="mt-6 flex gap-3 flex-wrap">
                   {canAccept && (
                     <button
                       onClick={() => setShowAcceptModal(true)}
@@ -238,6 +345,15 @@ export default function SellerOrderDetailPage() {
                     >
                       <CheckCircle className="w-5 h-5" />
                       Accept Order
+                    </button>
+                  )}
+                  {canAssignDelivery && (
+                    <button
+                      onClick={() => setShowAssignDeliveryModal(true)}
+                      className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Truck className="w-5 h-5" />
+                      Assign Delivery
                     </button>
                   )}
                   {canShip && (
@@ -322,8 +438,32 @@ export default function SellerOrderDetailPage() {
               </div>
             )}
 
+            {/* Delivery Assignment Info */}
+            {delivery && !order.delivery_id && (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 shadow-sm mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-blue-600" />
+                  Delivery Assigned
+                </h3>
+                <div className="space-y-2 text-gray-600">
+                  <p>
+                    <span className="font-medium">Status:</span> {delivery.status || 'Pending'}
+                  </p>
+                  {delivery.estimated_delivery && (
+                    <p>
+                      <span className="font-medium">Estimated Delivery:</span>{' '}
+                      {new Date(delivery.estimated_delivery).toLocaleDateString()}
+                    </p>
+                  )}
+                  <p className="text-sm text-amber-600 mt-2">
+                    Note: Delivery is assigned but order needs to be refreshed to show full details.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Delivery Verification Section - Only show when order has delivery */}
-            {order.delivery_id && verificationStatus && (
+            {(order.delivery_id || delivery) && verificationStatus && (
               <div className={`bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border ${verificationStatus?.fraud_detected ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Camera className="w-5 h-5 text-gray-400" />
@@ -603,6 +743,24 @@ export default function SellerOrderDetailPage() {
               By accepting this order, you commit to preparing and shipping the goods to the buyer.
             </p>
 
+            {errorMessage && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-red-800 font-medium text-sm">Error</p>
+                    <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
+                  </div>
+                  <button
+                    onClick={() => setErrorMessage(null)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Estimated Delivery Date (optional)
@@ -741,6 +899,130 @@ export default function SellerOrderDetailPage() {
                   <Ban className="w-5 h-5" />
                 )}
                 Reject Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Delivery Modal */}
+      {showAssignDeliveryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Assign Delivery Provider</h3>
+            <p className="text-gray-600 mb-6">
+              Select a delivery provider to handle shipping for this order.
+            </p>
+
+            {errorMessage && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-red-800 font-medium text-sm">Error</p>
+                    <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
+                  </div>
+                  <button
+                    onClick={() => setErrorMessage(null)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Delivery Provider <span className="text-red-500">*</span>
+                </label>
+                {loadingProviders ? (
+                  <div className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-500 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading providers...
+                  </div>
+                ) : providersError ? (
+                  <div className="w-full px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                    Error loading providers. Please try again.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedProviderId}
+                    onChange={(e) => setSelectedProviderId(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Select a provider...</option>
+                    {deliveryProviders && deliveryProviders.length > 0 ? (
+                      deliveryProviders.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.full_name || provider.email} {provider.phone ? `- ${provider.phone}` : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No delivery providers available</option>
+                    )}
+                  </select>
+                )}
+                {deliveryProviders && deliveryProviders.length === 0 && !loadingProviders && (
+                  <p className="mt-2 text-sm text-amber-600">
+                    No delivery providers found. Please ensure delivery provider accounts exist and are active.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Estimated Delivery Date (optional)
+                </label>
+                <input
+                  type="date"
+                  value={estimatedDelivery}
+                  onChange={(e) => setEstimatedDelivery(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Special Instructions (optional)
+                </label>
+                <textarea
+                  value={deliveryInstructions}
+                  onChange={(e) => setDeliveryInstructions(e.target.value)}
+                  placeholder="Any special instructions for the delivery provider..."
+                  rows={3}
+                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAssignDeliveryModal(false);
+                  setSelectedProviderId('');
+                  setDeliveryInstructions('');
+                  setEstimatedDelivery('');
+                  setErrorMessage(null);
+                }}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignDelivery}
+                disabled={assignDeliveryMutation.isLoading || !selectedProviderId}
+                className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {assignDeliveryMutation.isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Truck className="w-5 h-5" />
+                )}
+                Assign Delivery
               </button>
             </div>
           </div>

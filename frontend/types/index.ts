@@ -85,6 +85,7 @@ export interface UserSummary {
   email: string;
   full_name?: string;
   business_name?: string;
+  phone?: string;
 }
 
 export interface ProductSummary {
@@ -210,6 +211,12 @@ export interface SellerProcessRequest {
   estimated_delivery_date?: string;
   tracking_number?: string;
   notes?: string;
+}
+
+export interface DeliveryAssignmentRequest {
+  provider_id: string;
+  estimated_delivery_date?: string;
+  special_instructions?: string;
 }
 
 export interface CancelOrderRequest {

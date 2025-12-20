@@ -112,6 +112,7 @@ class UserSummary(BaseModel):
     email: str
     full_name: Optional[str] = None
     business_name: Optional[str] = None
+    phone: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -266,6 +267,13 @@ class SellerProcessRequest(BaseModel):
     estimated_delivery_date: Optional[datetime] = None
     tracking_number: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = Field(None, max_length=500)
+
+
+class DeliveryAssignmentRequest(BaseModel):
+    """Request to assign delivery provider to order"""
+    provider_id: UUID
+    estimated_delivery_date: Optional[datetime] = None
+    special_instructions: Optional[str] = Field(None, max_length=500)
 
 
 class CancelOrderRequest(BaseModel):

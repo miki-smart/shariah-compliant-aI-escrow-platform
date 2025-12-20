@@ -52,16 +52,19 @@ async def decode_token(token: str) -> dict:
     Returns token claims if valid.
     """
     try:
+        # Normalize Keycloak server URL (remove trailing slash)
+        base_url = str(settings.KEYCLOAK_SERVER_URL).rstrip('/')
+        
         # Get JWKS for verification
         jwks = await jwt_validator.get_jwks()
         
         # Get the signing key
-        jwks_client = PyJWKClient(
-            f"{settings.KEYCLOAK_SERVER_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
-        )
+        jwks_url = f"{base_url}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
+        jwks_client = PyJWKClient(jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         
         # Decode and verify the token
+        issuer_url = f"{base_url}/realms/{settings.KEYCLOAK_REALM}"
         claims = jwt.decode(
             token,
             signing_key.key,
@@ -72,7 +75,7 @@ async def decode_token(token: str) -> dict:
                 "verify_aud": True,
                 "verify_iss": True,
             },
-            issuer=f"{settings.KEYCLOAK_SERVER_URL}/realms/{settings.KEYCLOAK_REALM}",
+            issuer=issuer_url,
         )
         
         return claims

@@ -81,7 +81,10 @@ export default function BankDashboard() {
     o.status === OrderStatus.SETTLED || o.status === OrderStatus.COMPLETED
   );
   
-  const totalVolume = lockedEscrows.reduce((sum, o) => sum + o.total_amount, 0);
+  const totalVolume = lockedEscrows.reduce((sum, o) => {
+    const amount = Number(o.total_amount) || 0;
+    return sum + amount;
+  }, 0);
 
   return (
     <DashboardLayout role="BANK">
