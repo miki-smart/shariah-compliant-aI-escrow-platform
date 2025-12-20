@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+Pillow
+pytesseract
+opencv-python
+groq
+uvicorn
+python-dotenv
