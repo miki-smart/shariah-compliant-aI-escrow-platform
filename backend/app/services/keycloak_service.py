@@ -71,7 +71,8 @@ class KeycloakAdminClient:
     """
     
     def __init__(self):
-        self.server_url = str(settings.KEYCLOAK_SERVER_URL)
+        # Normalize server URL (remove trailing slash)
+        self.server_url = str(settings.KEYCLOAK_SERVER_URL).rstrip('/')
         self.realm = settings.KEYCLOAK_REALM
         self.client_id = settings.KEYCLOAK_CLIENT_ID
         self.client_secret = settings.KEYCLOAK_CLIENT_SECRET
@@ -363,7 +364,8 @@ class KeycloakJWTValidator:
     """
     
     def __init__(self):
-        self.server_url = str(settings.KEYCLOAK_SERVER_URL)
+        # Normalize server URL (remove trailing slash)
+        self.server_url = str(settings.KEYCLOAK_SERVER_URL).rstrip('/')
         self.realm = settings.KEYCLOAK_REALM
         self.client_id = settings.KEYCLOAK_CLIENT_ID
         self._jwks_cache: Optional[Dict] = None

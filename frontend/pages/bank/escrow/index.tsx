@@ -67,7 +67,7 @@ export default function BankEscrowMonitorPage() {
   // Calculate dashboard stats
   const stats = {
     totalEscrows: escrows?.length || 0,
-    totalLocked: escrows?.filter((e: any) => e.status === 'locked').reduce((sum: number, e: any) => sum + e.total_amount, 0) || 0,
+    totalLocked: escrows?.filter((e: any) => e.status === 'locked').reduce((sum: number, e: any) => sum + (Number(e.total_amount) || 0), 0) || 0,
     pendingCount: escrows?.filter((e: any) => e.status === 'pending').length || 0,
     frozenCount: escrows?.filter((e: any) => e.status === 'frozen').length || 0,
   };

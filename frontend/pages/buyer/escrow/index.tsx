@@ -81,9 +81,9 @@ export default function BuyerEscrowPage() {
 
   // Stats calculation
   const stats = {
-    totalLocked: escrows?.filter((e: any) => e.status === EscrowState.LOCKED).reduce((sum: number, e: any) => sum + e.total_amount, 0) || 0,
+    totalLocked: escrows?.filter((e: any) => e.status === EscrowState.LOCKED).reduce((sum: number, e: any) => sum + (Number(e.total_amount) || 0), 0) || 0,
     pendingFunding: escrows?.filter((e: any) => e.status === EscrowState.PENDING).length || 0,
-    releasedTotal: escrows?.filter((e: any) => e.status === EscrowState.RELEASED).reduce((sum: number, e: any) => sum + e.total_amount, 0) || 0,
+    releasedTotal: escrows?.filter((e: any) => e.status === EscrowState.RELEASED).reduce((sum: number, e: any) => sum + (Number(e.total_amount) || 0), 0) || 0,
   };
 
   return (

@@ -26,7 +26,11 @@ export default function DeliveryDashboard() {
       retry: false,
       onError: (error) => {
         if (process.env.NODE_ENV === 'development') {
-          console.error('[Delivery] Stats error:', error);
+          console.error('[Delivery] Stats error:', {
+            error,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          });
         }
       }
     }
@@ -41,7 +45,11 @@ export default function DeliveryDashboard() {
       retry: false,
       onError: (error) => {
         if (process.env.NODE_ENV === 'development') {
-          console.error('[Delivery] Assigned deliveries error:', error);
+          console.error('[Delivery] Assigned deliveries error:', {
+            error,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          });
         }
       }
     }
@@ -55,8 +63,13 @@ export default function DeliveryDashboard() {
       enabled: !!user && !authLoading,
       retry: false,
       onError: (error) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[Delivery] Pending pickups error:', error);
+        // 404 or empty responses are OK - just means no pending pickups
+        if (error?.response?.status !== 404 && process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] Pending pickups error:', {
+            error,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          });
         }
       }
     }
@@ -70,8 +83,13 @@ export default function DeliveryDashboard() {
       enabled: !!user && !authLoading,
       retry: false,
       onError: (error) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[Delivery] In-transit deliveries error:', error);
+        // 404 or empty responses are OK - just means no in-transit deliveries
+        if (error?.response?.status !== 404 && process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] In-transit deliveries error:', {
+            error,
+            status: error?.response?.status,
+            data: error?.response?.data,
+          });
         }
       }
     }
@@ -129,13 +147,25 @@ export default function DeliveryDashboard() {
   }
 
   const isLoading = statsLoading || assignedLoading;
-  const hasApiErrors = statsError || assignedError || pendingError || transitError;
   
-  // Use actual delivery data from API
+  // Only show error if ALL critical endpoints fail
+  const criticalErrors = [statsError, assignedError].filter(Boolean);
+  const hasCriticalErrors = criticalErrors.length === 2;
+  const hasPartialErrors = (statsError || assignedError || pendingError || transitError) && !hasCriticalErrors;
+  
+  // Use actual delivery data from API with fallbacks
   const deliveries = assignedData?.deliveries || assignedData || [];
   const inTransit = transitData?.deliveries || transitData || [];
   const pending = pendingData?.deliveries || pendingData || [];
   const completedToday = stats?.completed_today || stats?.completed || 0;
+  
+  // Calculate stats from data if API stats failed
+  const calculatedStats = {
+    total: stats?.total || deliveries.length,
+    pending_pickup: stats?.pending_pickup || pending.length,
+    active: stats?.active || inTransit.length,
+    completed: stats?.completed || completedToday,
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -167,15 +197,27 @@ export default function DeliveryDashboard() {
           </Link>
         </div>
 
-        {/* API Error Banner */}
-        {hasApiErrors && (
+        {/* API Error Banner - Only show if critical endpoints fail */}
+        {hasCriticalErrors && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-red-900 mb-1">Unable to load delivery data</h3>
+              <p className="text-sm text-red-700">
+                Could not connect to the delivery service. Please check your connection and refresh the page.
+              </p>
+            </div>
+          </div>
+        )}
+        
+        {/* Partial Error Warning - Some endpoints failed but we have some data */}
+        {hasPartialErrors && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-medium text-amber-900 mb-1">Unable to load some data</h3>
+              <h3 className="font-medium text-amber-900 mb-1">Partial data loaded</h3>
               <p className="text-sm text-amber-700">
-                Some delivery information could not be loaded. The dashboard is showing available data. 
-                Please refresh the page or contact support if the issue persists.
+                Some delivery information could not be loaded. Showing available data below.
               </p>
             </div>
           </div>
@@ -185,22 +227,22 @@ export default function DeliveryDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard
             title="Assigned Deliveries"
-            value={stats?.total_assigned || deliveries.length}
+            value={stats?.total || calculatedStats.total}
             icon={<Package className="w-6 h-6 text-violet-600" />}
           />
           <StatCard
             title="In Transit"
-            value={stats?.in_transit || inTransit.length}
+            value={stats?.active || calculatedStats.active}
             icon={<Truck className="w-6 h-6 text-blue-600" />}
           />
           <StatCard
             title="Pending Pickup"
-            value={stats?.pending_pickup || pending.length}
+            value={stats?.pending_pickup || calculatedStats.pending_pickup}
             icon={<Clock className="w-6 h-6 text-amber-600" />}
           />
           <StatCard
-            title="Completed Today"
-            value={completedToday}
+            title="Completed"
+            value={stats?.completed || calculatedStats.completed}
             icon={<CheckCircle className="w-6 h-6 text-emerald-600" />}
           />
         </div>

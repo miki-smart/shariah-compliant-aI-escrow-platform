@@ -372,8 +372,8 @@ class AIService:
         delivery = order.delivery
         return {
             "status": delivery.status.value,
-            "estimated_delivery": delivery.estimated_delivery.isoformat() if delivery.estimated_delivery else None,
-            "delivered_at": delivery.delivered_at.isoformat() if delivery.delivered_at else None,
+            "estimated_delivery": delivery.estimated_delivery_date.isoformat() if delivery.estimated_delivery_date else None,
+            "delivered_at": delivery.actual_delivery_date.isoformat() if delivery.actual_delivery_date else None,
             "buyer_confirmed": delivery.buyer_confirmed == "True"
         }
     

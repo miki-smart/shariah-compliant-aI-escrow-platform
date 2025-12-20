@@ -70,7 +70,7 @@ class DeliveryResponse(BaseModel):
     """Delivery information response"""
     id: UUID
     order_id: UUID
-    tracking_number: str
+    tracking_number: Optional[str] = None
     status: str
     pickup_address: Optional[dict] = None
     delivery_address: Optional[dict] = None
@@ -108,22 +108,22 @@ def to_delivery_response(delivery: Delivery, order: Optional[Order] = None) -> D
     return DeliveryResponse(
         id=delivery.id,
         order_id=delivery.order_id,
-        tracking_number=delivery.tracking_number,
+        tracking_number=delivery.tracking_number or None,
         status=delivery.status.value if delivery.status else "unknown",
         pickup_address=delivery.pickup_address,
         delivery_address=delivery.delivery_address,
-        estimated_delivery=delivery.estimated_delivery,
-        actual_delivery=delivery.actual_delivery,
-        picked_up_at=delivery.picked_up_at,
-        delivered_at=delivery.delivered_at,
-        special_instructions=delivery.special_instructions,
-        proof_of_delivery=delivery.proof_of_delivery,
+        estimated_delivery=delivery.estimated_delivery_date,
+        actual_delivery=delivery.actual_delivery_date,
+        picked_up_at=delivery.actual_pickup_date,
+        delivered_at=delivery.actual_delivery_date,
+        special_instructions=delivery.delivery_instructions,
+        proof_of_delivery=delivery.delivery_proof,
         provider_id=delivery.provider_id,
         created_at=delivery.created_at,
         updated_at=delivery.updated_at,
         order_number=order.order_number if order else None,
         buyer_name=order.buyer.full_name if order and order.buyer else None,
-        seller_name=order.seller.company_name if order and order.seller else None,
+        seller_name=order.seller.business_name or order.seller.full_name if order and order.seller else None,
     )
 
 
@@ -209,7 +209,7 @@ async def get_pending_pickups(
             and_(
                 Delivery.is_deleted == False,
                 Delivery.provider_id == current_user.id,
-                Delivery.status.in_([DeliveryStatus.PENDING, DeliveryStatus.ASSIGNED])
+                Delivery.status == DeliveryStatus.PENDING
             )
         ).order_by(Delivery.created_at.asc())
     )
@@ -243,11 +243,53 @@ async def get_in_transit_deliveries(
                     DeliveryStatus.OUT_FOR_DELIVERY
                 ])
             )
-        ).order_by(Delivery.estimated_delivery.asc())
+        ).order_by(Delivery.estimated_delivery_date.asc())
     )
     deliveries = result.scalars().all()
     
     return [to_delivery_response(d, d.order) for d in deliveries]
+
+
+@router.get(
+    "/order/{order_id}",
+    response_model=DeliveryResponse,
+    summary="Get delivery by order ID",
+    description="Get delivery details for a specific order"
+)
+async def get_delivery_by_order(
+    order_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get delivery details by order ID."""
+    result = await db.execute(
+        select(Delivery).options(
+            selectinload(Delivery.order).selectinload(Order.buyer),
+            selectinload(Delivery.order).selectinload(Order.seller),
+            selectinload(Delivery.tracking_events),
+        ).where(
+            and_(Delivery.order_id == order_id, Delivery.is_deleted == False)
+        )
+    )
+    delivery = result.scalar_one_or_none()
+    
+    if not delivery:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Delivery not found for this order"
+        )
+    
+    # Check access - seller, buyer, provider, or admin
+    if current_user.role not in [UserRole.ADMIN]:
+        if delivery.provider_id != current_user.id:
+            if delivery.order:
+                if delivery.order.buyer_id != current_user.id and delivery.order.seller_id != current_user.id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You don't have access to this delivery"
+                    )
+    
+    return to_delivery_response(delivery, delivery.order)
 
 
 @router.get(
@@ -554,8 +596,8 @@ async def track_delivery(
     return {
         "tracking_number": delivery.tracking_number,
         "status": delivery.status.value if delivery.status else "unknown",
-        "estimated_delivery": delivery.estimated_delivery,
-        "actual_delivery": delivery.actual_delivery,
+        "estimated_delivery": delivery.estimated_delivery_date,
+        "actual_delivery": delivery.actual_delivery_date,
         "events": [
             {
                 "event_type": e.event_type.value if e.event_type else "unknown",
@@ -604,9 +646,9 @@ async def get_delivery_stats(
     stats["total"] = len(total_result.all())
     
     # Calculate summary
-    stats["pending_pickup"] = stats.get("pending", 0) + stats.get("assigned", 0)
+    stats["pending_pickup"] = stats.get("pending", 0)  # No "assigned" status in DeliveryStatus enum
     stats["active"] = stats.get("picked_up", 0) + stats.get("in_transit", 0) + stats.get("out_for_delivery", 0)
-    stats["completed"] = stats.get("delivered", 0) + stats.get("confirmed", 0)
+    stats["completed"] = stats.get("delivered", 0)  # No "confirmed" status in DeliveryStatus enum
     
     return stats
 
