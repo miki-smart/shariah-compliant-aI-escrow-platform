@@ -18,46 +18,62 @@ export default function DeliveryDashboard() {
   const { user, isLoading: authLoading } = useAuth();
 
   // Fetch delivery stats
-  const { data: stats, isLoading: statsLoading } = useQuery(
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery(
     'delivery-stats',
     () => apiClient.getDeliveryStats(),
     { 
       enabled: !!user && !authLoading,
       retry: false,
-      onError: () => {} // Silently handle errors
+      onError: (error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] Stats error:', error);
+        }
+      }
     }
   );
 
   // Fetch assigned deliveries
-  const { data: assignedData, isLoading: assignedLoading } = useQuery(
+  const { data: assignedData, isLoading: assignedLoading, error: assignedError } = useQuery(
     'assigned-deliveries',
     () => apiClient.getAssignedDeliveries(),
     { 
       enabled: !!user && !authLoading,
       retry: false,
-      onError: () => {}
+      onError: (error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] Assigned deliveries error:', error);
+        }
+      }
     }
   );
 
   // Fetch pending pickup deliveries
-  const { data: pendingData } = useQuery(
+  const { data: pendingData, error: pendingError } = useQuery(
     'pending-pickups',
     () => apiClient.getPendingPickups(),
     { 
       enabled: !!user && !authLoading,
       retry: false,
-      onError: () => {}
+      onError: (error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] Pending pickups error:', error);
+        }
+      }
     }
   );
 
   // Fetch in-transit deliveries
-  const { data: transitData } = useQuery(
+  const { data: transitData, error: transitError } = useQuery(
     'in-transit-deliveries',
     () => apiClient.getInTransitDeliveries(),
     { 
       enabled: !!user && !authLoading,
       retry: false,
-      onError: () => {}
+      onError: (error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Delivery] In-transit deliveries error:', error);
+        }
+      }
     }
   );
 
@@ -70,8 +86,21 @@ export default function DeliveryDashboard() {
       return;
     }
     
-    const userRole = user.role || (user as any).roles?.[0];
-    if (userRole && userRole !== 'delivery_provider' && userRole !== 'admin') {
+    // Normalize role - handle both formats and case variations
+    const userRole = (user.role || (user as any).roles?.[0] || '').toLowerCase();
+    const allowedRoles = ['delivery_provider', 'delivery', 'admin'];
+    
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Delivery Dashboard] Auth check:', {
+        user,
+        userRole,
+        allowedRoles,
+        isAllowed: allowedRoles.includes(userRole),
+      });
+    }
+    
+    if (userRole && !allowedRoles.includes(userRole)) {
       const dashboardRoutes: Record<string, string> = {
         buyer: '/buyer',
         seller: '/seller',
@@ -91,18 +120,22 @@ export default function DeliveryDashboard() {
     );
   }
 
-  const userRole = user.role || (user as any).roles?.[0];
-  if (userRole !== 'delivery_provider' && userRole !== 'admin') {
+  // Normalize role - handle both formats and case variations
+  const userRole = (user.role || (user as any).roles?.[0] || '').toLowerCase();
+  const allowedRoles = ['delivery_provider', 'delivery', 'admin'];
+  
+  if (!allowedRoles.includes(userRole)) {
     return null;
   }
 
   const isLoading = statsLoading || assignedLoading;
+  const hasApiErrors = statsError || assignedError || pendingError || transitError;
   
   // Use actual delivery data from API
   const deliveries = assignedData?.deliveries || assignedData || [];
   const inTransit = transitData?.deliveries || transitData || [];
   const pending = pendingData?.deliveries || pendingData || [];
-  const completedToday = stats?.completed_today || 0;
+  const completedToday = stats?.completed_today || stats?.completed || 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -133,6 +166,20 @@ export default function DeliveryDashboard() {
             </Button>
           </Link>
         </div>
+
+        {/* API Error Banner */}
+        {hasApiErrors && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-amber-900 mb-1">Unable to load some data</h3>
+              <p className="text-sm text-amber-700">
+                Some delivery information could not be loaded. The dashboard is showing available data. 
+                Please refresh the page or contact support if the issue persists.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

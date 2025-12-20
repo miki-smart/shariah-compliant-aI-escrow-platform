@@ -29,11 +29,28 @@ function LoginPage() {
       await login(email, password, rememberMe);
       // Redirect is handled by the auth context
     } catch (err: any) {
-      setError(err?.message || 'Invalid credentials. Please try again.');
+      // Better error handling
+      const errorMessage = err?.response?.data?.detail || 
+                          err?.message || 
+                          authError ||
+                          'Invalid credentials. Please try again.';
+      setError(errorMessage);
+      
+      // Debug logging
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[Login] Error:', {
+          error: err,
+          response: err?.response,
+          message: errorMessage,
+        });
+      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Show auth context error if present
+  const displayError = error || authError;
 
   // Quick login options for demo - credentials from Keycloak realm export
   const quickLogins = [
@@ -74,9 +91,9 @@ function LoginPage() {
             <p className="text-gray-500 mt-2">Sign in to your account</p>
           </div>
 
-          {error && (
+          {displayError && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-red-600 text-sm text-center">{error}</p>
+              <p className="text-red-600 text-sm text-center">{displayError}</p>
             </div>
           )}
 
