@@ -239,21 +239,57 @@ export function AuthProvider({ children }: AuthProviderProps) {
         seller: '/seller',
         bank: '/bank',
         delivery_provider: '/delivery',
+        delivery: '/delivery', // Handle both formats
         admin: '/admin',
       };
       
       // Handle both 'role' (string) and 'roles' (array) formats
-      const role = response.user.role || response.user.roles?.[0] || 'buyer';
+      // Normalize to lowercase for consistency
+      const role = (response.user.role || response.user.roles?.[0] || 'buyer').toLowerCase();
       const redirectPath = dashboardRoutes[role] || '/buyer';
+      
+      // Debug logging (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Auth] Login successful:', {
+          userRole: response.user.role,
+          normalizedRole: role,
+          redirectPath,
+          user: response.user,
+        });
+      }
+      
       router.push(redirectPath);
     } catch (error: any) {
-      const message = parseErrorDetail(error?.response?.data?.detail) || 'Login failed. Please check your credentials.';
+      let message = 'Login failed. Please check your credentials.';
+      
+      // Handle connection errors
+      if (error?.code === 'ECONNREFUSED' || error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error')) {
+        message = 'Cannot connect to server. Please ensure the backend is running on http://localhost:8000';
+      } else if (error?.response?.data?.detail) {
+        // Use backend error message
+        message = parseErrorDetail(error.response.data.detail);
+      } else if (error?.message) {
+        message = error.message;
+      }
+      
+      // Debug logging
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[Auth] Login error:', {
+          error,
+          code: error?.code,
+          response: error?.response,
+          status: error?.response?.status,
+          data: error?.response?.data,
+          message,
+        });
+      }
+      
       setState(prev => ({
         ...prev,
         isLoading: false,
         error: message,
       }));
-      throw new Error(message);
+      throw error; // Re-throw original error to preserve response data
     }
   }, [router, storeTokens, storeUser]);
 

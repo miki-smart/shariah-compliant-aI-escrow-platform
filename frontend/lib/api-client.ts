@@ -37,20 +37,41 @@ class ApiClient {
   private client: AxiosInstance;
 
   constructor() {
+    // Ensure baseURL includes /api/v1
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const baseURL = apiUrl.endsWith('/api/v1') ? apiUrl : `${apiUrl}/api/v1`;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[API Client] Initialized with baseURL:', baseURL);
+    }
+    
     this.client = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
+      baseURL,
       headers: {
         'Content-Type': 'application/json',
       },
+      timeout: 30000, // 30 second timeout
     });
 
-    // Request interceptor - Add auth token
+    // Request interceptor - Add auth token and log requests
     this.client.interceptors.request.use(
       (config) => {
         const token = this.getAuthToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        
+        // Log requests in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[API] Request:', {
+            method: config.method?.toUpperCase(),
+            url: config.url,
+            baseURL: config.baseURL,
+            fullURL: `${config.baseURL}${config.url}`,
+            hasAuth: !!token,
+          });
+        }
+        
         return config;
       },
       (error) => Promise.reject(error)
@@ -60,8 +81,23 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
+        // Enhanced error logging
+        if (process.env.NODE_ENV === 'development') {
+          if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+            console.error('[API] Connection error - Is the backend running?', {
+              baseURL: this.client.defaults.baseURL,
+              error: error.message,
+            });
+          } else if (error.response) {
+            console.error('[API] Response error:', {
+              status: error.response.status,
+              data: error.response.data,
+              url: error.config?.url,
+            });
+          }
+        }
+        
         // Don't auto-logout on 401 - let the auth context handle token refresh
-        // Only log the error for debugging
         if (error.response?.status === 401) {
           console.warn('API returned 401:', error.response?.data);
         }
@@ -558,20 +594,51 @@ class ApiClient {
     password: string, 
     rememberMe: boolean = false
   ): Promise<{ user: User; token: string; refresh_token?: string }> {
-    const response = await this.client.post('/auth/login', { 
-      email, 
-      password,
-      remember_me: rememberMe,
-    });
-    
-    // Map response to expected format
-    const result = {
-      user: response.data.user,
-      token: response.data.access_token,
-      refresh_token: response.data.refresh_token,
-    };
-    
-    return result;
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[API] Login request:', {
+          url: '/auth/login',
+          baseURL: this.client.defaults.baseURL,
+          fullURL: `${this.client.defaults.baseURL}/auth/login`,
+          email,
+          rememberMe,
+        });
+      }
+      
+      const response = await this.client.post('/auth/login', { 
+        email, 
+        password,
+        remember_me: rememberMe,
+      });
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[API] Login response:', {
+          status: response.status,
+          hasUser: !!response.data?.user,
+          hasToken: !!response.data?.access_token,
+        });
+      }
+      
+      // Map response to expected format
+      const result = {
+        user: response.data.user,
+        token: response.data.access_token,
+        refresh_token: response.data.refresh_token,
+      };
+      
+      return result;
+    } catch (error: any) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[API] Login error details:', {
+          error,
+          code: error?.code,
+          message: error?.message,
+          response: error?.response,
+          config: error?.config,
+        });
+      }
+      throw error;
+    }
   }
 
   async refreshTokens(refreshToken: string): Promise<{ user: User; token: string; refresh_token?: string }> {

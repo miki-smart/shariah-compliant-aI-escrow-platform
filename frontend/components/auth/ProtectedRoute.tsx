@@ -32,14 +32,16 @@ export function ProtectedRoute({
       // Check role-based access
       if (allowedRoles && user) {
         // Support both user.role (backend) and user.roles (legacy)
-        const userRole = user.role || user.roles?.[0];
-        if (userRole && !allowedRoles.includes(userRole)) {
+        // Normalize to lowercase for consistency
+        const userRole = (user.role || user.roles?.[0] || '').toLowerCase();
+        if (userRole && !allowedRoles.map(r => r.toLowerCase()).includes(userRole)) {
           // Redirect to user's appropriate dashboard
           const dashboardRoutes: Record<string, string> = {
             buyer: '/buyer',
             seller: '/seller',
             bank: '/bank',
             delivery_provider: '/delivery',
+            delivery: '/delivery', // Handle both formats
             admin: '/admin',
           };
           router.replace(dashboardRoutes[userRole] || '/');
@@ -73,8 +75,9 @@ export function ProtectedRoute({
 
   // Role not allowed
   if (allowedRoles && user) {
-    const userRole = user.role || user.roles?.[0];
-    if (userRole && !allowedRoles.includes(userRole)) {
+    const userRole = (user.role || user.roles?.[0] || '').toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map(r => r.toLowerCase());
+    if (userRole && !normalizedAllowedRoles.includes(userRole)) {
       return null;
     }
   }
@@ -103,15 +106,17 @@ export function GuestRoute({
       // Redirect authenticated users to their dashboard
       const destination = redirectTo || (() => {
         // Support both user.role (backend) and user.roles (legacy)
-        const userRole = user.role || user.roles?.[0];
+        // Normalize to lowercase for consistency
+        const userRole = (user.role || user.roles?.[0] || 'buyer').toLowerCase();
         const dashboardRoutes: Record<string, string> = {
           buyer: '/buyer',
           seller: '/seller',
           bank: '/bank',
           delivery_provider: '/delivery',
+          delivery: '/delivery', // Handle both formats
           admin: '/admin',
         };
-        return dashboardRoutes[userRole || 'buyer'] || '/buyer';
+        return dashboardRoutes[userRole] || '/buyer';
       })();
       
       router.replace(typeof destination === 'function' ? destination : destination);
